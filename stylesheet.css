@@ -28,7 +28,7 @@ ul {
 
 .column {
   float: left;
-  width: 30%;
+  width: 400px;
 }
 
 .row:after {
@@ -46,7 +46,14 @@ ul {
 .center {
   align-self: center;
   align-items: center;
-  margin: 0 30%;
+  margin: 0 auto;
+  width: 600px;
+}
+.center2 {
+  align-self: center;
+  align-items: center;
+  margin: 0 auto;
+  width: 800px;
 }
 
 .right{
@@ -57,16 +64,18 @@ ul {
 .description {
   margin-left: 10px;
   margin-bottom: 10px;
+  margin-top: 5px;
   padding-left: 10px;
   border-left: solid;
-  border-width: 1px;
+  border-width: 3px;
+  border-color: #dddddd;
 }
 
 .hline {
   margin-right: 50px;
   margin-bottom: 20px;
   border-top: solid;
-  border-width: 0.5px;
+  border-width: 1px;
 }
 
 .div3 {
