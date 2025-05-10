@@ -67,8 +67,8 @@ ul {
   margin-top: 5px;
   padding-left: 10px;
   border-left: solid;
-  border-width: 3px;
-  border-color: #dddddd;
+  border-width: 1px;
+  border-color: #000;
 }
 
 .hline {
