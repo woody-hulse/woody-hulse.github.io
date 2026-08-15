@@ -21,11 +21,14 @@ const STUDY_LAST_DECK_KEY = 'study_last_deck_v1';
 // backgroundPreset/accentPreset name a themed token pair (see styles.css
 // :root[data-bg]/[data-accent]); 'custom' backgroundPreset uses the stored
 // (compressed) backgroundImage data URI instead of a preset.
+// theme: 'light' | 'dark' | 'system' — system leaves data-theme unset so the
+// existing prefers-color-scheme token block wins.
 const DEFAULT_SETTINGS = {
   sessionCardLimit: 0,
   backgroundPreset: 'paper',
   accentPreset: 'raspberry',
-  backgroundImage: null
+  backgroundImage: null,
+  theme: 'system'
 };
 const DEFAULT_PIG_STATE = { totalPigs: 1, starCount: 0 };
 const REVIEW_LOG_MAX_ENTRIES = 5000;

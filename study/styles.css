@@ -59,13 +59,17 @@
   --view-pad-x: clamp(16px, 4vw, 40px);
 
   --ease: cubic-bezier(0.34, 1.2, 0.64, 1);
+
+  color-scheme: light;
 }
 
-/* Automatic dark mode — follows the OS/browser's prefers-color-scheme, no
-   in-app toggle. Only the semantic tokens are redefined; every rule in this
-   file consumes them via var(), so the whole app re-themes from here. */
+/* Automatic dark mode — follows the OS/browser's prefers-color-scheme when
+   Settings appearance is System (no data-theme on :root). Forced Light/Dark
+   override this block via :root[data-theme] further down. Only the semantic
+   tokens are redefined; every rule in this file consumes them via var(). */
 @media (prefers-color-scheme: dark) {
   :root {
+    color-scheme: dark;
     --ink: #f0e8ec;
     --ink-soft: #b9aab1;
     --ink-faint: #7d6f76;
@@ -489,8 +493,8 @@ input:focus, textarea:focus, select:focus {
    nest/cards/trash icon family — stroked, not filled. */
 .icon-btn svg {
   display: block;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.9;
@@ -1439,6 +1443,14 @@ select:focus,
   border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   object-fit: cover;
+  cursor: pointer;
+}
+
+.field-with-image.image-drop-over textarea,
+.card-row.editing textarea.image-drop-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+  background: var(--accent-tint);
 }
 
 #add-card-btn {
@@ -2319,6 +2331,99 @@ select:focus,
   }
 }
 
+/* Forced appearance (Settings Light / Dark). Higher specificity than the
+   prefers-color-scheme blocks above, so they win. System mode leaves
+   data-theme unset and the media query stands. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --ink: #2a2126;
+  --ink-soft: #6b5d64;
+  --ink-faint: #9b8d94;
+  --line: #ece4e7;
+  --line-strong: #dccfd5;
+  --bg: #faf6f7;
+  --bg-deep: #f1e9ec;
+  --surface: #ffffff;
+  --accent: #d6337a;
+  --accent-dark: #b02465;
+  --accent-light: #fbe0ee;
+  --accent-tint: #fdf2f8;
+  --gold: #e2a63b;
+  --gold-dark: #b9821f;
+  --gold-tint: #fbf1de;
+  --rating-again: #dd4d4d;
+  --rating-again-dark: #bf3b3b;
+  --rating-hard: #e08a34;
+  --rating-hard-dark: #c07220;
+  --rating-good: #35a869;
+  --rating-good-dark: #2b8a56;
+  --rating-easy: #4b8bdf;
+  --rating-easy-dark: #3a6cc0;
+  --shadow-sm: 0 1px 3px rgba(20, 24, 33, 0.06);
+  --shadow-md: 0 6px 18px rgba(20, 24, 33, 0.08);
+  --shadow-lg: 0 14px 34px rgba(20, 24, 33, 0.14);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #f0e8ec;
+  --ink-soft: #b9aab1;
+  --ink-faint: #7d6f76;
+  --line: #322930;
+  --line-strong: #453a42;
+  --bg: #161013;
+  --bg-deep: #201820;
+  --surface: #241b21;
+  --accent: #f06baf;
+  --accent-dark: #f68bc2;
+  --accent-light: #45213a;
+  --accent-tint: #301826;
+  --gold: #e6b658;
+  --gold-dark: #f0c975;
+  --gold-tint: #3a2f16;
+  --rating-again: #e56a6a;
+  --rating-again-dark: #cf5050;
+  --rating-hard: #e6a24f;
+  --rating-hard-dark: #c9852f;
+  --rating-good: #56b784;
+  --rating-good-dark: #3f9a67;
+  --rating-easy: #6b9de8;
+  --rating-easy-dark: #4f7fce;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 14px 34px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme="light"][data-bg="slate"] { --bg: #f2f5f8; --bg-deep: #e6ebf0; }
+:root[data-theme="light"][data-bg="dusk"]  { --bg: #f6f3fb; --bg-deep: #ece5f6; }
+:root[data-theme="light"][data-bg="pig"]   { --bg: #fdeef5; --bg-deep: #fbe0ee; }
+:root[data-theme="light"][data-bg="grass"] { --bg: #d7e9bb; --bg-deep: #c8dea6; }
+
+:root[data-theme="light"][data-accent="blueberry"] { --accent: #3b6fd4; --accent-dark: #2b56ab; --accent-light: #dde8fb; --accent-tint: #eff4fd; }
+:root[data-theme="light"][data-accent="matcha"]    { --accent: #2f9e63; --accent-dark: #237a4b; --accent-light: #d6f0e0; --accent-tint: #eefaf2; }
+:root[data-theme="light"][data-accent="tangerine"] { --accent: #e07d2a; --accent-dark: #bd6416; --accent-light: #fce6d2; --accent-tint: #fef5ec; }
+:root[data-theme="light"][data-accent="grape"]     { --accent: #8b46c8; --accent-dark: #6f34a3; --accent-light: #eaddf7; --accent-tint: #f6effc; }
+
+:root[data-theme="dark"][data-bg="slate"] { --bg: #0f1417; --bg-deep: #161c21; }
+:root[data-theme="dark"][data-bg="dusk"]  { --bg: #14101c; --bg-deep: #1d1728; }
+:root[data-theme="dark"][data-bg="pig"]   { --bg: #1e1017; --bg-deep: #291320; }
+:root[data-theme="dark"][data-bg="grass"] { --bg: #1c2415; --bg-deep: #232d19; }
+
+:root[data-theme="dark"][data-accent="blueberry"] { --accent: #6b9de8; --accent-dark: #8fb5ef; --accent-light: #1e2b45; --accent-tint: #161f30; }
+:root[data-theme="dark"][data-accent="matcha"]    { --accent: #56b784; --accent-dark: #78c99e; --accent-light: #183526; --accent-tint: #12251a; }
+:root[data-theme="dark"][data-accent="tangerine"] { --accent: #f0a15a; --accent-dark: #f4b77e; --accent-light: #3a2413; --accent-tint: #2a1a0d; }
+:root[data-theme="dark"][data-accent="grape"]     { --accent: #b57ce0; --accent-dark: #c79aec; --accent-light: #2e1c40; --accent-tint: #22142f; }
+
+:root[data-theme="light"][data-bg="grass"] body {
+  background-image: url("resources/grass.jpg");
+}
+
+:root[data-theme="dark"][data-bg="grass"] body {
+  background-image:
+    linear-gradient(rgba(18, 24, 14, 0.42), rgba(18, 24, 14, 0.42)),
+    url("resources/grass.jpg");
+}
+
 /* =========================================================================
    POINTER-BASED DRAG (mouse + touch) — floating ghost + drag state
    ========================================================================= */
@@ -2496,6 +2601,18 @@ body.drag-active {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.settings-theme-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-theme-row .secondary-btn.active {
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  color: var(--accent-dark);
 }
 
 .swatch-grid {

@@ -102,7 +102,7 @@
       </nav>
       <div id="tab-row-tools">
         <button id="settings-btn" class="icon-btn" type="button" title="Saettings" aria-label="Saettings">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 3.5v2.2M12 18.3v2.2M4.5 12H2.3M21.7 12h-2.2M6.2 6.2 4.6 4.6M19.4 19.4l-1.6-1.6M17.8 6.2l1.6-1.6M4.6 19.4l1.6-1.6"/></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
         <button id="shortcuts-btn" class="icon-btn" type="button" title="Keyboarb shortcots" aria-label="Keyboarb shortcots">?</button>
       </div>
@@ -215,20 +215,18 @@
             <div class="add-form" id="basic-add-form">
               <div class="field-with-image">
                 <textarea id="add-front" placeholder="Front"></textarea>
-                <div class="image-attach">
-                  <input id="add-front-image" type="file" accept="image/*" hidden>
-                  <button id="add-front-image-btn" class="secondary-btn" type="button">+ Image</button>
-                  <img id="add-front-image-preview" class="image-preview" hidden alt="">
-                  <button id="add-front-image-remove" class="secondary-btn" type="button" hidden>Remove image</button>
+                <input id="add-front-image" type="file" accept="image/*" hidden>
+                <div class="image-attach" hidden>
+                  <img id="add-front-image-preview" class="image-preview" alt="">
+                  <button id="add-front-image-remove" class="secondary-btn" type="button">Remove image</button>
                 </div>
               </div>
               <div class="field-with-image">
                 <textarea id="add-back" placeholder="Baeck"></textarea>
-                <div class="image-attach">
-                  <input id="add-back-image" type="file" accept="image/*" hidden>
-                  <button id="add-back-image-btn" class="secondary-btn" type="button">+ Image</button>
-                  <img id="add-back-image-preview" class="image-preview" hidden alt="">
-                  <button id="add-back-image-remove" class="secondary-btn" type="button" hidden>Remove image</button>
+                <input id="add-back-image" type="file" accept="image/*" hidden>
+                <div class="image-attach" hidden>
+                  <img id="add-back-image-preview" class="image-preview" alt="">
+                  <button id="add-back-image-remove" class="secondary-btn" type="button">Remove image</button>
                 </div>
               </div>
               <button id="add-card-btn">Add Carb</button>
@@ -358,6 +356,15 @@
       </div>
 
       <div class="settings-section">
+        <h3 class="settings-label">Appearanbce</h3>
+        <div id="settings-theme-row" class="settings-theme-row" role="radiogroup" aria-label="Appearanbce">
+          <button type="button" class="secondary-btn" data-theme-choice="light">Light</button>
+          <button type="button" class="secondary-btn" data-theme-choice="dark">Dark</button>
+          <button type="button" class="secondary-btn" data-theme-choice="system">System</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <h3 class="settings-label">Foregrounb</h3>
         <div id="settings-accent-swatches" class="swatch-grid"></div>
       </div>
@@ -390,6 +397,8 @@
 <script src="js/stats.js"></script>
 <script src="js/images.js"></script>
 <script src="js/occlusion.js"></script>
+<script src="vendor/jszip.min.js"></script>
+<script src="vendor/sql-wasm.js"></script>
 <script src="js/anki-import.js"></script>
 <script src="js/pigs.js"></script>
 <script src="js/app.js"></script>
