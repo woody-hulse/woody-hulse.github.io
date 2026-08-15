@@ -1,0 +1,2208 @@
+/* =========================================================================
+   Hool's Carbs — a plain, modern flashcard app
+   Visual shell only. No JS-driven behavior lives here.
+   ========================================================================= */
+
+:root {
+  /* ---- palette: warm neutrals + a playful raspberry accent (pig/"carbs"
+     identity) balanced by the existing warm gold for "due"/milestones ---- */
+  --ink: #2a2126;
+  --ink-soft: #6b5d64;
+  --ink-faint: #9b8d94;
+
+  --line: #ece4e7;
+  --line-strong: #dccfd5;
+
+  --bg: #faf6f7;
+  --bg-deep: #f1e9ec;
+  --white: #ffffff;
+  /* card/panel/input surface — a separate token from --white so dark mode
+     can flip surfaces dark while leaving --white as true white (used for
+     text/icons that sit on top of colored, non-surface backgrounds) */
+  --surface: #ffffff;
+
+  --accent: #d6337a;
+  --accent-dark: #b02465;
+  --accent-light: #fbe0ee;
+  --accent-tint: #fdf2f8;
+
+  --gold: #e2a63b;
+  --gold-dark: #b9821f;
+  --gold-tint: #fbf1de;
+
+  /* rating colors — Anki's semantic convention (bad→good), tuned into a
+     cohesive, slightly warmer set that sits happily beside the accent */
+  --rating-again: #dd4d4d;
+  --rating-again-dark: #bf3b3b;
+  --rating-hard: #e08a34;
+  --rating-hard-dark: #c07220;
+  --rating-good: #35a869;
+  --rating-good-dark: #2b8a56;
+  --rating-easy: #4b8bdf;
+  --rating-easy-dark: #3a6cc0;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --shadow-sm: 0 1px 3px rgba(20, 24, 33, 0.06);
+  --shadow-md: 0 6px 18px rgba(20, 24, 33, 0.08);
+  --shadow-lg: 0 14px 34px rgba(20, 24, 33, 0.14);
+
+  --font-display: "Quicksand", "Nunito", sans-serif;
+  --font-body: "Nunito", "Quicksand", sans-serif;
+
+  --nav-h: 68px;
+  /* single source of truth for the centered content column width, so the tab
+     row, every view panel, and the study card all line up edge-to-edge */
+  --content-width: 640px;
+  --view-pad-x: clamp(16px, 4vw, 40px);
+
+  --ease: cubic-bezier(0.34, 1.2, 0.64, 1);
+}
+
+/* Automatic dark mode — follows the OS/browser's prefers-color-scheme, no
+   in-app toggle. Only the semantic tokens are redefined; every rule in this
+   file consumes them via var(), so the whole app re-themes from here. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #f0e8ec;
+    --ink-soft: #b9aab1;
+    --ink-faint: #7d6f76;
+
+    --line: #322930;
+    --line-strong: #453a42;
+
+    --bg: #161013;
+    --bg-deep: #201820;
+    --surface: #241b21;
+
+    --accent: #f06baf;
+    --accent-dark: #f68bc2;
+    --accent-light: #45213a;
+    --accent-tint: #301826;
+
+    --gold: #e6b658;
+    --gold-dark: #f0c975;
+    --gold-tint: #3a2f16;
+
+    --rating-again: #e56a6a;
+    --rating-again-dark: #cf5050;
+    --rating-hard: #e6a24f;
+    --rating-hard-dark: #c9852f;
+    --rating-good: #56b784;
+    --rating-good-dark: #3f9a67;
+    --rating-easy: #6b9de8;
+    --rating-easy-dark: #4f7fce;
+
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 14px 34px rgba(0, 0, 0, 0.45);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  overscroll-behavior: none;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-wrap: anywhere;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  margin: 0;
+  color: var(--ink);
+}
+
+p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+button {
+  font-family: var(--font-display);
+  cursor: pointer;
+  border: none;
+  outline-offset: 2px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+}
+
+/* Themed baseline for every text-like control so none ever falls through to
+   the browser's default white box. Plain element selectors (low specificity)
+   so any class/id rule below still overrides padding/size as needed; the
+   colors/border/focus here apply everywhere unless a more specific rule
+   restyles them. Reads correctly in both light and dark via the tokens. */
+input, textarea, select {
+  font-family: var(--font-body);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: 16px;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+::placeholder {
+  color: var(--ink-faint);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: var(--radius-sm);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-faint);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* =========================================================================
+   AUTH SCREEN
+   ========================================================================= */
+
+#auth-screen {
+  position: fixed;
+  inset: 0;
+  height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  max-height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: clamp(28px, 6vw, 48px) clamp(24px, 5vw, 40px);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid var(--line);
+}
+
+.auth-mascot {
+  width: clamp(64px, 14vw, 92px);
+  height: auto;
+  margin-bottom: 4px;
+}
+
+#auth-screen h1 {
+  font-size: clamp(22px, 5vw, 27px);
+}
+
+#auth-screen p {
+  max-width: 32ch;
+  font-size: 0.98rem;
+}
+
+.auth-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+#username-input {
+  width: 100%;
+  padding: 13px 16px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--line-strong);
+  background: var(--bg);
+  font-size: 1rem;
+  color: var(--ink);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+
+#username-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+#username-submit {
+  width: 100%;
+  padding: 13px 18px;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--white);
+  font-weight: 700;
+  font-size: 1rem;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+#username-submit:hover {
+  background: var(--accent-dark);
+}
+
+#username-submit:active {
+  transform: translateY(1px);
+}
+
+.auth-cloud {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.google-btn {
+  width: 100%;
+  padding: 11px 18px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 0.95rem;
+  border: 1.5px solid var(--line-strong);
+  gap: 10px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.google-btn:hover {
+  background: var(--bg-deep);
+  border-color: var(--ink-faint);
+}
+
+.google-g-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+/* =========================================================================
+   APP SHELL
+   ========================================================================= */
+
+#app {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ---- header / nav ---- */
+
+#top-nav {
+  flex: 0 0 auto;
+  min-height: var(--nav-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 10px clamp(16px, 4vw, 32px);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+  z-index: 5;
+}
+
+#brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+#brand-mascot {
+  height: 38px;
+  width: auto;
+}
+
+#brand-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: var(--ink);
+}
+
+#user-greeting {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+#pig-count-display {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--accent-dark);
+  background: var(--accent-tint);
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent-light);
+}
+
+.star-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--gold-dark);
+  background: var(--gold-tint);
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--gold);
+}
+
+.star-icon {
+  width: 13px;
+  height: 13px;
+  fill: var(--gold-dark);
+  flex-shrink: 0;
+}
+
+/* Row that carries the floating tab pill (centered) plus the ? help button
+   (right-aligned) inside the same centered content column. Grid 1fr/auto/1fr
+   keeps the pill dead-centered on the page regardless of the ? button's
+   width; the outer max-width + matching padding make its right edge line up
+   with every view panel below it. */
+#tab-row {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 100%;
+  max-width: calc(var(--content-width) + 2 * var(--view-pad-x));
+  box-sizing: border-box;
+  padding: 0 var(--view-pad-x);
+  margin: 14px auto 10px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  z-index: 4;
+}
+
+/* The floating tab toolbar: a distinct pill hovering above the page content,
+   lifted with a real shadow rather than a plain inline bar. */
+#tab-nav {
+  grid-column: 2;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  background: var(--bg-deep);
+  padding: 4px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-md);
+  flex-wrap: wrap;
+}
+
+#shortcuts-btn {
+  grid-column: 3;
+  justify-self: end;
+}
+
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1.5px solid var(--line-strong);
+  color: var(--ink-soft);
+  font-weight: 700;
+  font-size: 1rem;
+  flex-shrink: 0;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.icon-btn:hover {
+  background: var(--bg-deep);
+  border-color: var(--ink-faint);
+  color: var(--ink);
+}
+
+.tab-btn {
+  padding: 6px 14px;
+  min-height: 38px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-soft);
+  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.tab-btn svg {
+  display: block;
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tab-btn:hover {
+  color: var(--ink);
+}
+
+.tab-btn.active {
+  background: var(--accent);
+  color: var(--white);
+}
+
+/* ---- main content ---- */
+
+#main-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  position: relative;
+}
+
+.view {
+  display: none;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: var(--view-pad-x);
+}
+
+.view.active {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Every top-level tab scrolls its own content but keeps it in the same
+   centered column the rest of the app uses (.panel's max-width: 640px
+   pattern) — nothing in Naists/Stody/Edit Daeck stretches full-width. */
+#view-naists,
+#view-study,
+#view-edit {
+  justify-content: flex-start;
+}
+
+.panel {
+  width: 100%;
+  max-width: var(--content-width);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.view-title {
+  font-size: 1.25rem;
+  margin-bottom: 2px;
+}
+
+.panel-subtitle {
+  font-size: 0.98rem;
+  color: var(--ink-soft);
+  margin: 6px 0 0;
+}
+
+.secondary-btn {
+  padding: 9px 18px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 0.86rem;
+  border: 1.5px solid var(--line-strong);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.secondary-btn:hover {
+  background: var(--bg-deep);
+  border-color: var(--ink-faint);
+}
+
+.secondary-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* =========================================================================
+   SHARED SEARCH FIELD (Naists tab, Edit Daeck tab)
+   ========================================================================= */
+
+.search-field {
+  width: 100%;
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--line-strong);
+  background: var(--surface);
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.search-field:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+/* =========================================================================
+   NAISTS TAB — unified filesystem-style naist/deck browser
+   ========================================================================= */
+
+#naists-panel {
+  width: 100%;
+  max-width: var(--content-width);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+#naists-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.deck-row-name {
+  font-weight: 700;
+  color: var(--ink);
+  font-size: 1.02rem;
+}
+
+.deck-row-counts {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* "Due" reads as something needing attention — warm/gold, matching the
+   app's one other warm accent (the star-milestone badge) rather than
+   inventing a second unrelated hue. Zero-due falls back to a neutral grey
+   (.none), exactly like the total-count badge below, so an empty due count
+   doesn't compete visually with a real one. Both variants are legible in
+   the dark-mode override since they consume the same --gold-* tokens
+   redefined there. */
+.deck-due-badge {
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--gold-tint);
+  color: var(--gold-dark);
+  border: 1px solid var(--gold);
+}
+
+.deck-due-badge.none {
+  background: var(--bg-deep);
+  color: var(--ink-faint);
+  border-color: var(--line);
+}
+
+/* "Total" is neutral information, not a call to action — plain grey,
+   using the same muted tokens as the due badge's zero state. */
+.deck-total-badge {
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-deep);
+  color: var(--ink-faint);
+  border: 1px solid var(--line);
+}
+
+.deck-picker-empty {
+  text-align: center;
+  color: var(--ink-faint);
+  padding: 30px 20px;
+  font-weight: 600;
+}
+
+/* ---- naist breadcrumb trail (Naists tab + Edit Daeck heading) ---- */
+
+.breadcrumb-trail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+  /* one row, no wrap — this is what keeps a deep naist path from wrapping
+     awkwardly onto multiple lines on narrow widths; it scrolls sideways
+     instead, and the current (rightmost) crumb is what's usually being
+     scrolled into view */
+}
+
+.breadcrumb-trail:empty {
+  display: none;
+}
+
+.breadcrumb-crumb {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  min-height: 28px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--ink-soft);
+  font-weight: 600;
+  font-size: 0.85rem;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.breadcrumb-crumb:not(.current):hover {
+  background: var(--bg-deep);
+  color: var(--ink);
+}
+
+.breadcrumb-crumb.current {
+  color: var(--ink);
+  font-weight: 700;
+  cursor: default;
+}
+
+.breadcrumb-sep {
+  flex-shrink: 0;
+  color: var(--ink-faint);
+  font-size: 0.8rem;
+}
+
+/* ---- naist/deck browse rows (Naists tab) ---- */
+
+@keyframes naist-level-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+#naists-list.level-enter {
+  animation: naist-level-enter 0.2s var(--ease);
+}
+
+.naist-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Compact icon-only action button (trash-can Delete, etc.) — square,
+   quiet by default, turning red on hover to signal a destructive action. */
+.icon-action-btn {
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1.5px solid var(--line-strong);
+  color: var(--ink-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.icon-action-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.icon-action-btn.delete-btn:hover:not(:disabled) {
+  color: var(--rating-again);
+  border-color: var(--rating-again);
+}
+
+/* Shared row shell for both naist rows and deck rows: a bordered card with
+   a clickable/informational main area plus one or two clusters of compact
+   secondary-button actions. Rows wrap onto multiple lines on narrow widths
+   rather than ever forcing horizontal scroll. */
+.browse-row {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 10px 12px 10px 14px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.browse-row:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-md);
+}
+
+.browse-row-naist {
+  padding: 8px 14px 8px 10px;
+}
+
+/* The clickable/navigable part of a row (naist: navigate in; deck: just
+   informational — decks act via their explicit Stody/Cram/Edit buttons). */
+.browse-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: transparent;
+  border: none;
+  padding: 6px 4px;
+  min-height: auto;
+  text-align: left;
+}
+
+.browse-row-main:active {
+  transform: translateY(1px);
+}
+
+.browse-row-info {
+  flex: 1 1 220px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.naist-row-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.naist-row-meta {
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+}
+
+.browse-row-primary-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.browse-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.browse-row-actions .secondary-btn,
+.browse-row-primary-actions .secondary-btn {
+  padding: 7px 12px;
+  min-height: 36px;
+  font-size: 0.8rem;
+}
+
+/* A deck row's prominent call-to-study action — the one spot in the app
+   deliberately styled to draw the eye more than a plain secondary-btn,
+   short of the accent "primary form action" buttons elsewhere (Add Carb,
+   Show Answer, Save settings). */
+.browse-row-stody-btn {
+  padding: 8px 16px;
+  min-height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--white);
+  font-weight: 700;
+  font-size: 0.82rem;
+  transition: background 0.15s ease;
+}
+
+.browse-row-stody-btn:hover {
+  background: var(--accent-dark);
+}
+
+/* ---- drag-and-drop + inline expand affordances ---- */
+
+/* Grip handle: the always-there "this row is draggable" affordance. The
+   whole row is draggable, but the handle is the unambiguous grab point
+   (and the only one that works over a naist row's <button> main area). */
+.drag-handle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  align-self: stretch;
+  color: var(--ink-faint);
+  cursor: grab;
+  opacity: 0.55;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.browse-row:hover .drag-handle {
+  opacity: 1;
+  color: var(--ink-soft);
+}
+
+.drag-handle svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+  pointer-events: none;
+}
+
+/* Disclosure chevron on naist rows: expands/collapses that naist's contents
+   inline (tree-style) without navigating into it. Rotates 90° when open. */
+.naist-chevron {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--ink-soft);
+  transition: background 0.15s ease, transform 0.15s var(--ease);
+}
+
+.naist-chevron svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.naist-chevron:hover:not(:disabled) {
+  background: var(--bg-deep);
+  color: var(--ink);
+}
+
+.naist-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.naist-chevron.empty {
+  visibility: hidden;
+}
+
+/* Keeps a deck row's name aligned under sibling naist names (which are
+   preceded by a chevron). */
+.naist-chevron-spacer {
+  flex: 0 0 auto;
+  width: 22px;
+}
+
+/* The row lifting off while it's the drag source. */
+.browse-row.dragging {
+  opacity: 0.4;
+}
+
+/* A valid drop target lighting up under the pointer (naist rows, breadcrumb
+   crumbs, and the list background all share this feel). */
+.browse-row.drag-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-light);
+  background: var(--accent-tint);
+}
+
+.breadcrumb-crumb.drag-over {
+  background: var(--accent-tint);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+  color: var(--ink);
+}
+
+#naists-list.drag-over-root {
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 0 0 2px var(--accent-light);
+}
+
+/* =========================================================================
+   TAB EMPTY STATES (Stody / Edit Daeck opened with no deck chosen yet)
+   ========================================================================= */
+
+.tab-empty-state {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  color: var(--ink-soft);
+  padding: 48px 24px;
+  margin: 0 auto;
+}
+
+.tab-empty-state h2 {
+  font-size: 1.25rem;
+}
+
+.tab-empty-state p {
+  max-width: 36ch;
+}
+
+.tab-empty-state .secondary-btn {
+  margin-top: 8px;
+}
+
+/* ---- active study session ---- */
+
+#study-session {
+  width: 100%;
+  max-width: var(--content-width);
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* Three equal-flex tracks (back button | progress | right cluster) so the
+   progress line is truly centered on the column's midline, not just wedged
+   between two unequal-width side clusters. */
+#study-session-header {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+#back-to-decks-btn {
+  grid-column: 1;
+  justify-self: start;
+}
+
+#session-progress {
+  grid-column: 2;
+  text-align: center;
+  font-weight: 700;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  letter-spacing: 0.01em;
+}
+
+#study-session-header-right {
+  grid-column: 3;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.mode-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.mode-badge.cram {
+  background: var(--bg-deep);
+  color: var(--rating-hard-dark);
+  border: 1px solid var(--rating-hard);
+}
+
+#empty-state {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  color: var(--ink-soft);
+  padding: 48px 24px;
+}
+
+#empty-state h2 {
+  font-size: 1.25rem;
+}
+
+#empty-state p {
+  max-width: 36ch;
+}
+
+#empty-state .secondary-btn {
+  margin-top: 8px;
+}
+
+#study-card {
+  /* fills the full centered content column, and grows to take the vertical
+     space left over in the session view rather than sitting at a fixed size */
+  width: 100%;
+  max-width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 20px;
+  margin: 0 auto;
+}
+
+.card-shell {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: clamp(280px, 48vh, 560px);
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--line);
+  padding: clamp(28px, 5vw, 48px);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  justify-content: center;
+  overflow-y: auto;
+  /* click anywhere on the card to reveal / advance */
+  cursor: pointer;
+}
+
+#card-front {
+  font-family: var(--font-display);
+  font-size: clamp(1.15rem, 3vw, 1.5rem);
+  font-weight: 600;
+  color: var(--ink);
+  text-align: center;
+  line-height: 1.4;
+}
+
+#card-back {
+  font-size: clamp(1rem, 2.6vw, 1.2rem);
+  color: var(--ink-soft);
+  text-align: center;
+  line-height: 1.5;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.card-image {
+  display: block;
+  max-width: 100%;
+  max-height: 260px;
+  width: auto;
+  height: auto;
+  margin: 0 auto 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  object-fit: contain;
+  background: var(--bg);
+}
+
+#show-answer-btn {
+  padding: 12px 34px;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--white);
+  font-weight: 700;
+  font-size: 1rem;
+  transition: background 0.15s ease;
+}
+
+#show-answer-btn:hover {
+  background: var(--accent-dark);
+}
+
+#rating-buttons {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+/* Chunky, tactile rating chips: the label reads big and bold, the interval
+   preview sits under it in a translucent pill. A soft "raised" bottom edge
+   plus lift-on-hover gives them a friendlier, less generic feel. Legible in
+   both themes because the color tokens are re-tuned per scheme. */
+.rating-btn {
+  padding: 11px 8px 10px;
+  border-radius: var(--radius-md);
+  color: var(--white);
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.16), var(--shadow-sm);
+  transition: filter 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.rating-btn:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.rating-btn:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.16), var(--shadow-sm);
+}
+
+.rating-interval {
+  display: inline-block;
+  font-weight: 700;
+  font-size: 0.7rem;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.18);
+  padding: 2px 8px;
+  border-radius: 999px;
+  line-height: 1.2;
+  min-height: 1em;
+}
+
+.rating-again { background: var(--rating-again); }
+.rating-again:hover { background: var(--rating-again-dark); }
+
+.rating-hard { background: var(--rating-hard); }
+.rating-hard:hover { background: var(--rating-hard-dark); }
+
+.rating-good { background: var(--rating-good); }
+.rating-good:hover { background: var(--rating-good-dark); }
+
+.rating-easy { background: var(--rating-easy); }
+.rating-easy:hover { background: var(--rating-easy-dark); }
+
+/* =========================================================================
+   DECK SELECT ROW (Naists tab's "+ New naist / + New daeck" row)
+   ========================================================================= */
+
+.deck-select-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-width: 100%;
+}
+
+.deck-select-row label {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+select,
+.deck-select-row input[type="text"] {
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--line-strong);
+  background: var(--surface);
+  font-size: 16px;
+  color: var(--ink);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.deck-select-row input[type="text"] {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+select:focus,
+.deck-select-row input[type="text"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+/* =========================================================================
+   EDIT DAECK TAB
+   ========================================================================= */
+
+#edit-deck-panel {
+  width: 100%;
+  max-width: var(--content-width);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+#edit-deck-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.deck-detail-counts {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+#edit-deck-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+#edit-deck-actions .secondary-btn {
+  padding: 7px 14px;
+  min-height: 36px;
+  font-size: 0.82rem;
+}
+
+/* ---- add-card form (Edit Daeck tab) ---- */
+
+.add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: clamp(18px, 4vw, 28px);
+  box-shadow: var(--shadow-sm);
+}
+
+#add-front,
+#add-back {
+  width: 100%;
+  min-height: 90px;
+  resize: vertical;
+  padding: 13px 15px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--line-strong);
+  background: var(--bg);
+  font-size: 16px;
+  color: var(--ink);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+
+#add-front:focus,
+#add-back:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.field-with-image {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.image-attach {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.image-attach .secondary-btn {
+  padding: 7px 14px;
+  min-height: 36px;
+  font-size: 0.82rem;
+}
+
+.image-preview {
+  max-height: 64px;
+  max-width: 96px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  object-fit: cover;
+}
+
+#add-card-btn {
+  align-self: flex-start;
+  padding: 11px 26px;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--white);
+  font-weight: 700;
+  font-size: 0.95rem;
+  transition: background 0.15s ease;
+}
+
+#add-card-btn:hover {
+  background: var(--accent-dark);
+}
+
+/* =========================================================================
+   SHARED CARD ROW (Naists search results + Edit Daeck card list)
+   ========================================================================= */
+
+.card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.card-row.editing {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.card-row.editing textarea {
+  width: 100%;
+  min-height: 70px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--line-strong);
+  background: var(--bg);
+  font-size: 16px;
+  margin-bottom: 8px;
+  resize: vertical;
+}
+
+.card-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.card-row-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.card-row-tag {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--accent-dark);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: var(--accent-tint);
+  border: 1px solid var(--accent-light);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+}
+
+.card-row-front {
+  font-weight: 700;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-row-sep {
+  flex-shrink: 0;
+  color: var(--ink-faint);
+}
+
+.card-row-back {
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.card-row-thumb {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  object-fit: cover;
+}
+
+.card-row-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.card-row-actions .secondary-btn {
+  padding: 7px 14px;
+  min-height: 36px;
+}
+
+.list-empty {
+  text-align: center;
+  color: var(--ink-faint);
+  padding: 22px;
+  font-weight: 600;
+}
+
+/* =========================================================================
+   IMPORT STATUS (New Daeck overlay's import status line)
+   ========================================================================= */
+
+.import-status-text {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  min-height: 1.1em;
+}
+
+/* =========================================================================
+   NEW DAECK OVERLAY — start empty / import Anki / import JSON, landing in
+   whichever naist the Naists tab is currently browsing
+   ========================================================================= */
+
+.new-deck-card {
+  text-align: left;
+  align-items: stretch;
+  max-width: 420px;
+}
+
+.new-deck-card h2 {
+  text-align: center;
+}
+
+.new-deck-card input[type="text"] {
+  width: 100%;
+}
+
+.new-deck-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.new-deck-options .secondary-btn {
+  width: 100%;
+  justify-content: flex-start;
+  padding-left: 16px;
+}
+
+/* =========================================================================
+   STATS VIEW
+   ========================================================================= */
+
+.stats-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.stat-tile {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stat-tile-value {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.stat-tile-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.stats-chart {
+  display: flex;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 14px 12px 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+.stats-bar-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.stats-bar-track {
+  height: 84px;
+  width: 100%;
+  max-width: 26px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.stats-bar {
+  width: 100%;
+  background: var(--accent);
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+}
+
+.stats-bar.due-bar {
+  background: var(--rating-hard);
+}
+
+.stats-bar-count {
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.stats-bar-label {
+  font-size: 0.62rem;
+  color: var(--ink-faint);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+#stats-deck-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stats-deck-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.stats-deck-row-name {
+  font-weight: 700;
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+
+.stats-deck-row-metrics {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.stats-deck-row-metrics strong {
+  color: var(--ink);
+}
+
+.stats-empty {
+  text-align: center;
+  color: var(--ink-faint);
+  padding: 22px;
+  font-weight: 600;
+}
+
+/* =========================================================================
+   SCATTERED PIGS — placed randomly across the page's whitespace instead of
+   a walking strip. Purely decorative: fixed, pointer-events:none, sits
+   below interactive content (cards have their own opaque background so
+   they naturally cover a pig that lands underneath).
+   ========================================================================= */
+
+#pig-field {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.pig-scatter {
+  position: absolute;
+  width: auto;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 4px 6px rgba(20, 24, 33, 0.14));
+  opacity: 0.9;
+}
+
+.pig-scatter.falling {
+  animation: pig-fall 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes pig-fall {
+  0% { transform: translateY(-260px) scale(0.8); opacity: 0; }
+  55% { opacity: 0.9; }
+  72% { transform: translateY(8px) scale(1.06); }
+  86% { transform: translateY(-6px) scale(0.97); }
+  100% { transform: translateY(0) scale(1); opacity: 0.9; }
+}
+
+/* main content sits above the pig field */
+#top-nav,
+#tab-row,
+#tab-nav,
+#main-content,
+#auth-screen,
+#pig-encouragement-overlay,
+#loading-overlay {
+  position: relative;
+  z-index: 2;
+}
+
+/* =========================================================================
+   OVERLAYS
+   ========================================================================= */
+
+#pig-encouragement-overlay,
+#shortcuts-overlay,
+#new-deck-overlay,
+#loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(31, 35, 40, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  padding: 20px;
+}
+
+.shortcuts-card {
+  text-align: left;
+  align-items: stretch;
+  max-width: 420px;
+}
+
+.shortcuts-card h2 {
+  font-size: 1.15rem;
+  text-align: center;
+}
+
+#shortcuts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shortcut-keys {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.shortcut-row kbd {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--bg-deep);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  min-width: 1.6em;
+  text-align: center;
+}
+
+.shortcut-desc {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  text-align: right;
+}
+
+.overlay-card {
+  width: 100%;
+  max-width: 380px;
+  max-height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: clamp(24px, 6vw, 36px);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  animation: pop-in 0.25s var(--ease);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.star-badge {
+  width: 76px;
+  height: 76px;
+}
+
+.star-badge svg {
+  width: 100%;
+  height: 100%;
+  fill: var(--gold);
+  filter: drop-shadow(0 4px 10px rgba(226, 166, 59, 0.45));
+}
+
+#pig-encouragement-overlay.star-event .star-badge {
+  animation: star-pop 0.65s var(--ease) both;
+}
+
+@keyframes star-pop {
+  0% { transform: scale(0.3) rotate(-35deg); opacity: 0; }
+  55% { transform: scale(1.18) rotate(10deg); opacity: 1; }
+  75% { transform: scale(0.94) rotate(-5deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+#pig-encouragement-img {
+  width: 120px;
+  height: 120px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+  background: var(--bg-deep);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--line);
+}
+
+#pig-encouragement-text {
+  font-family: var(--font-display);
+  font-size: 1.08rem;
+  font-weight: 600;
+  color: var(--ink);
+  min-height: 1.4em;
+}
+
+#pig-encouragement-overlay.star-event #pig-encouragement-text {
+  color: var(--gold-dark);
+}
+
+#pig-encouragement-continue {
+  padding: 11px 28px;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--white);
+  font-weight: 700;
+  font-size: 0.94rem;
+  transition: background 0.15s ease;
+}
+
+#pig-encouragement-continue:hover {
+  background: var(--accent-dark);
+}
+
+#loading-overlay {
+  background: rgba(31, 35, 40, 0.25);
+}
+
+.pig-spinner {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  animation: spin 1.1s linear infinite;
+  filter: drop-shadow(0 6px 12px rgba(20, 24, 33, 0.25));
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* =========================================================================
+   RESPONSIVE
+   ========================================================================= */
+
+@media (max-width: 720px) {
+  #top-nav {
+    padding: 10px 16px;
+    justify-content: center;
+    text-align: center;
+  }
+
+  #brand {
+    justify-content: center;
+    width: 100%;
+  }
+
+  /* On narrow screens, drop the left spacer column so the tab pill gets the
+     full remaining width with the ? button still on its right. */
+  #tab-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  #tab-nav {
+    grid-column: 1;
+    width: 100%;
+    justify-content: center;
+  }
+
+  #shortcuts-btn {
+    grid-column: 2;
+  }
+
+  .tab-btn {
+    flex: 1 1 auto;
+    padding: 6px 10px;
+    text-align: center;
+  }
+
+  #rating-buttons {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .card-shell {
+    min-height: clamp(200px, 40vh, 420px);
+  }
+
+  .browse-row-main {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .browse-row-deck .browse-row-info {
+    flex-basis: 100%;
+  }
+
+  #edit-deck-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  #brand-title {
+    font-size: 1.1rem;
+  }
+
+  #brand-mascot {
+    height: 30px;
+  }
+
+  #user-greeting,
+  #pig-count-display {
+    font-size: 0.78rem;
+  }
+
+  .tab-btn {
+    padding: 7px 10px;
+  }
+}
+
+@media (max-height: 560px) {
+  :root {
+    --nav-h: 56px;
+  }
+
+  .auth-mascot {
+    width: 52px;
+  }
+}
+
+@media (max-height: 420px) {
+  :root {
+    --nav-h: 44px;
+  }
+
+  #top-nav {
+    padding: 6px clamp(12px, 3vw, 24px);
+    gap: 8px;
+  }
+
+  #brand {
+    gap: 8px;
+  }
+
+  #tab-row {
+    margin: 8px auto;
+  }
+
+  #tab-nav {
+    gap: 4px;
+    padding: 3px;
+  }
+
+  .tab-btn {
+    padding: 4px 8px;
+  }
+
+  #study-session-header {
+    margin-bottom: 8px;
+  }
+
+  #study-card {
+    gap: 10px;
+  }
+
+  .card-shell {
+    min-height: 0;
+    padding: clamp(12px, 3vw, 20px);
+    gap: 10px;
+  }
+
+  #card-back {
+    padding-top: 10px;
+  }
+
+  #auth-screen,
+  #pig-encouragement-overlay,
+  #loading-overlay {
+    padding: 12px;
+  }
+
+  .auth-card,
+  .overlay-card {
+    gap: 8px;
+    padding: 16px;
+  }
+
+  .auth-mascot {
+    width: 36px;
+    margin-bottom: 0;
+  }
+
+  #pig-encouragement-img {
+    width: 72px;
+    height: 72px;
+  }
+}
+
+/* =========================================================================
+   IMAGE OCCLUSION CARDS (Edit Daeck creation editor + Stody-mode reveal)
+   ========================================================================= */
+
+.add-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.add-mode-row .secondary-btn.active {
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  color: var(--accent-dark);
+}
+
+.occlusion-upload-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.occlusion-hint,
+.occlusion-region-count {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+/* Wrap sizes itself exactly to the image's rendered box (inline-block, no
+   inline-gap under the image) so region/mask overlays positioned with plain
+   CSS percentages line up correctly with zero resize-listener bookkeeping. */
+#occlusion-editor-wrap {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+  cursor: crosshair;
+  user-select: none;
+}
+
+#occlusion-editor-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+}
+
+.occlusion-region,
+.occlusion-region-drawing {
+  position: absolute;
+  border-radius: var(--radius-sm);
+}
+
+.occlusion-region {
+  background: rgba(68, 87, 201, 0.35);
+  border: 1.5px solid var(--accent-dark);
+}
+
+.occlusion-region-drawing {
+  background: rgba(68, 87, 201, 0.2);
+  border: 1.5px dashed var(--accent);
+  pointer-events: none;
+}
+
+.occlusion-region-delete {
+  /* fixed (non-token) colors: this sits over arbitrary photo content, not
+     the page background, so it should stay a dark chip with white text/
+     border regardless of light/dark theme */
+  position: absolute;
+  top: -9px;
+  right: -9px;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-sm);
+  background: rgba(20, 22, 26, 0.85);
+  color: #ffffff;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  padding: 0;
+}
+
+#occlusion-save-btn {
+  align-self: flex-start;
+  padding: 11px 26px;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--white);
+  font-weight: 700;
+  font-size: 0.95rem;
+  transition: background 0.15s ease;
+}
+
+#occlusion-save-btn:hover {
+  background: var(--accent-dark);
+}
+
+#occlusion-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Stody-mode masked image: same sizing spirit as .card-image, but with no
+   bottom margin so the wrap's box matches the image's rendered box exactly
+   (percentage-positioned .occlusion-mask children rely on that). */
+#card-occlusion-wrap {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+}
+
+.occlusion-study-image {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  width: auto;
+  height: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  object-fit: contain;
+  background: var(--bg);
+}
+
+.occlusion-mask {
+  position: absolute;
+  background: var(--ink);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: opacity 0.15s var(--ease);
+}
+
+.occlusion-mask:hover {
+  opacity: 0.88;
+}
+
+.occlusion-mask.revealed {
+  display: none;
+}

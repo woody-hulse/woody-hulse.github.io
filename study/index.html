@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hool's Carbs</title>
+<meta name="description" content="A flashcard study app with spaced repetition, decks, and Anki import.">
+
+<link rel="icon" type="image/x-icon" href="resources/favicon.ico">
+<link rel="apple-touch-icon" href="resources/favicon-180.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="styles.css">
+
+<!-- Cloud auth + storage bridge (Firebase). All three are ES modules,
+     deferred by the HTML spec by default; auth.js and cloud-store.js each use
+     a top-level await so window.CloudAuth and window.CloudStore are fully set
+     up before DOMContentLoaded fires — see the contract comments atop
+     js/auth.js and js/cloud-store.js. Config must stay first so
+     window.FIREBASE_CONFIG exists when the other two run, and cloud-store
+     runs after auth so it can reuse the same initialized Firebase app
+     (module scripts execute in document order relative to each other). -->
+<script type="module" src="js/firebase-config.js"></script>
+<script type="module" src="js/auth.js"></script>
+<script type="module" src="js/cloud-store.js"></script>
+</head>
+<body>
+
+  <!-- ===================== AUTH SCREEN ===================== -->
+  <div id="auth-screen">
+    <div class="auth-card">
+      <img class="auth-mascot" src="resources/pigs/mascot-knorrig.png" alt="" aria-hidden="true">
+      <h1>Hool's Carbs</h1>
+      <p>Who ainters?</p>
+      <div class="auth-form" id="auth-local-form">
+        <input id="username-input" type="text" placeholder="What should we call you?" autocomplete="off">
+        <button id="username-submit">Gobing</button>
+      </div>
+
+      <!-- Shown instead of the local-username form only once a real Firebase
+           project is configured (see js/firebase-config.js). Hidden by
+           default so the app looks and behaves exactly as before until
+           then. -->
+      <div class="auth-cloud" id="auth-cloud-form" hidden>
+        <button id="google-signin-btn" class="google-btn" type="button">
+          <svg class="google-g-icon" viewBox="0 0 18 18" aria-hidden="true">
+            <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/>
+            <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/>
+            <path fill="#FBBC05" d="M3.97 10.72A5.4 5.4 0 0 1 3.68 9c0-.6.1-1.18.29-1.72V4.95H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.05l3.01-2.33z"/>
+            <path fill="#EA4335" d="M9 3.58c1.32 0 2.51.46 3.44 1.35l2.59-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/>
+          </svg>
+          <span>Sign in with Google</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MAIN APP ===================== -->
+  <div id="app" hidden>
+    <header id="top-nav">
+      <div id="brand">
+        <img id="brand-mascot" src="resources/pigs/mascot-knorrig.png" alt="Hool's Carbs">
+        <span id="brand-title">Hool's Carbs</span>
+        <span id="user-greeting"></span>
+        <span id="pig-count-display"></span>
+        <span id="star-count-display" class="star-count-badge" hidden>
+          <svg class="star-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          <span id="star-count-value">0</span>
+        </span>
+      </div>
+      <button id="cloud-signout-btn" class="secondary-btn" type="button" hidden>Sign out</button>
+    </header>
+
+    <!-- Tab bar row: tabs stay centered (grid center cell) while the ?
+         help button is right-aligned within the same centered content
+         column. -->
+    <div id="tab-row">
+      <nav id="tab-nav">
+        <button class="tab-btn" data-tab="study" title="Stody" aria-label="Stody">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M8 11h8M8 14.5h5"/></svg>
+        </button>
+        <button class="tab-btn active" data-tab="naists" title="Naists" aria-label="Naists">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13c0 3.5 4 6 9 6s9-2.5 9-6"/><path d="M3 13c1.5-1.3 3-1.3 4.5 0M16.5 13c1.5-1.3 3-1.3 4.5 0"/><ellipse cx="10" cy="13.1" rx="1.6" ry="1.9"/><ellipse cx="14" cy="13.4" rx="1.6" ry="1.9"/></svg>
+        </button>
+        <button class="tab-btn" data-tab="edit" title="Edit Daeck" aria-label="Edit Daeck">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="12" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg>
+        </button>
+        <button class="tab-btn" data-tab="stats" title="Staets" aria-label="Staets">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M7 20v-6M12 20v-10M17 20v-4"/></svg>
+        </button>
+      </nav>
+      <button id="shortcuts-btn" class="icon-btn" type="button" title="Keyboarb shortcots" aria-label="Keyboarb shortcots">?</button>
+    </div>
+
+    <main id="main-content">
+
+      <!-- NAISTS VIEW — unified filesystem-style naist/deck browser -->
+      <section id="view-naists" class="view active">
+        <div id="naists-panel">
+          <h2 class="view-title">Naists</h2>
+          <div id="naists-breadcrumb" class="breadcrumb-trail"></div>
+
+          <input id="naists-search" class="search-field" type="text" placeholder="Search all carbs...">
+
+          <div id="naists-list"></div>
+
+          <div class="deck-select-row">
+            <button id="new-naist-btn" class="secondary-btn" type="button">+ New naist</button>
+            <button id="new-deck-btn" class="secondary-btn" type="button">+ New daeck</button>
+            <button id="import-deck-btn" class="secondary-btn" type="button">Import daeck</button>
+            <input id="import-deck-input" type="file" accept=".apkg,.txt,.csv" hidden>
+          </div>
+        </div>
+      </section>
+
+      <!-- STODY VIEW — the active study-session flow, unchanged internally.
+           Defaults to resuming the last-studied deck when opened from the
+           tab bar directly; a deck row's "Stody"/"Cram" button forces a
+           specific deck via switchTab('study', { deckId, deckName, cram }). -->
+      <section id="view-study" class="view">
+        <div id="study-no-deck-state" class="tab-empty-state">
+          <h2>No daeck picked yet</h2>
+          <p>Choob one in Naists to start studying.</p>
+          <button id="study-no-deck-goto-btn" class="secondary-btn">Go to Naists</button>
+        </div>
+
+        <div id="study-session" hidden>
+          <div id="study-session-header">
+            <button id="back-to-decks-btn" class="secondary-btn">&larr; Daecks</button>
+            <div id="session-progress"></div>
+            <div id="study-session-header-right">
+              <span id="cram-mode-badge" class="mode-badge cram" hidden>Cram</span>
+              <button id="undo-rating-btn" class="secondary-btn" type="button" hidden>Undo</button>
+            </div>
+          </div>
+
+          <div id="empty-state" hidden>
+            <h2>All caught op</h2>
+            <p></p>
+            <button id="empty-back-btn" class="secondary-btn">Baeck to daecks</button>
+          </div>
+
+          <div id="study-card" hidden>
+            <div class="card-shell">
+              <div id="card-front">
+                <img id="card-front-image" class="card-image" hidden alt="">
+                <div id="card-front-text"></div>
+                <div id="card-occlusion-wrap" hidden></div>
+              </div>
+              <div id="card-back" hidden>
+                <img id="card-back-image" class="card-image" hidden alt="">
+                <div id="card-back-text"></div>
+              </div>
+            </div>
+            <button id="show-answer-btn">Show Answer</button>
+            <div id="rating-buttons" hidden>
+              <button class="rating-btn rating-again" data-rating="again">Agaen<span class="rating-interval"></span></button>
+              <button class="rating-btn rating-hard" data-rating="hard">Harb<span class="rating-interval"></span></button>
+              <button class="rating-btn rating-good" data-rating="good">Gob<span class="rating-interval"></span></button>
+              <button class="rating-btn rating-easy" data-rating="easy">Eaby<span class="rating-interval"></span></button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- EDIT DAECK VIEW — add-card area (basic + image occlusion) and this
+           deck's card list, scoped to whichever deck is currently open for
+           editing (module state in app.js, not a URL/tab param). -->
+      <section id="view-edit" class="view">
+        <div id="edit-no-deck-state" class="tab-empty-state">
+          <h2>No daeck picked yet</h2>
+          <p>Choob a daeck in Naists, then hit Edit.</p>
+          <button id="edit-no-deck-goto-btn" class="secondary-btn">Go to Naists</button>
+        </div>
+
+        <div id="edit-deck-panel" hidden>
+          <div id="edit-deck-breadcrumb" class="breadcrumb-trail"></div>
+
+          <div id="edit-deck-header">
+            <h2 id="edit-deck-title" class="view-title"></h2>
+            <span id="edit-deck-counts" class="deck-detail-counts"></span>
+          </div>
+
+          <div id="edit-deck-actions">
+            <button id="edit-deck-rename-btn" class="secondary-btn">Rename</button>
+            <button id="edit-deck-delete-btn" class="icon-action-btn delete-btn" type="button" title="Delete" aria-label="Delete">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13M10 11v6M14 11v6"/></svg>
+            </button>
+          </div>
+
+          <div class="panel add-panel">
+            <h3 class="panel-subtitle">Add a carb</h3>
+
+            <div class="add-mode-row">
+              <button id="add-mode-basic-btn" class="secondary-btn active" type="button">Basic card</button>
+              <button id="add-mode-occlusion-btn" class="secondary-btn" type="button">+ Image occlusion card</button>
+            </div>
+
+            <div class="add-form" id="basic-add-form">
+              <div class="field-with-image">
+                <textarea id="add-front" placeholder="Front"></textarea>
+                <div class="image-attach">
+                  <input id="add-front-image" type="file" accept="image/*" hidden>
+                  <button id="add-front-image-btn" class="secondary-btn" type="button">+ Image</button>
+                  <img id="add-front-image-preview" class="image-preview" hidden alt="">
+                  <button id="add-front-image-remove" class="secondary-btn" type="button" hidden>Remove image</button>
+                </div>
+              </div>
+              <div class="field-with-image">
+                <textarea id="add-back" placeholder="Baeck"></textarea>
+                <div class="image-attach">
+                  <input id="add-back-image" type="file" accept="image/*" hidden>
+                  <button id="add-back-image-btn" class="secondary-btn" type="button">+ Image</button>
+                  <img id="add-back-image-preview" class="image-preview" hidden alt="">
+                  <button id="add-back-image-remove" class="secondary-btn" type="button" hidden>Remove image</button>
+                </div>
+              </div>
+              <button id="add-card-btn">Add Carb</button>
+            </div>
+
+            <div class="add-form occlusion-add-form" id="occlusion-add-form" hidden>
+              <div class="occlusion-upload-row">
+                <input id="occlusion-image-input" type="file" accept="image/*" hidden>
+                <button id="occlusion-image-btn" class="secondary-btn" type="button">Upload image</button>
+                <span class="occlusion-hint">Click and drag on the image to draw a mask over the answer. Add as many as you like.</span>
+              </div>
+              <div id="occlusion-editor-wrap" hidden>
+                <img id="occlusion-editor-image" alt="">
+              </div>
+              <div id="occlusion-region-count" class="occlusion-region-count">No regions yet — click and drag on the image to draw one.</div>
+              <button id="occlusion-save-btn" disabled>Add card</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3 class="panel-subtitle">Carbs in this daeck</h3>
+            <input id="edit-deck-search" class="search-field" type="text" placeholder="Search carbs...">
+            <div id="edit-deck-card-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- STATS VIEW -->
+      <section id="view-stats" class="view">
+        <div class="panel stats-panel">
+          <h2 class="view-title">Staets &amp; prograiss</h2>
+
+          <div id="stats-tiles" class="stats-tiles"></div>
+
+          <h3 class="panel-subtitle">Reviewbs, last 14 daybs</h3>
+          <div id="stats-activity-chart" class="stats-chart"></div>
+
+          <h3 class="panel-subtitle">Due forecaebst, next 7 daybs</h3>
+          <div id="stats-forecast-chart" class="stats-chart"></div>
+
+          <h3 class="panel-subtitle">By daeck</h3>
+          <div id="stats-deck-breakdown"></div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- scattered pig sprites, placed randomly across the page's whitespace -->
+  <div id="pig-field" aria-hidden="true"></div>
+
+  <!-- ===================== OVERLAYS ===================== -->
+  <div id="pig-encouragement-overlay" hidden>
+    <div class="overlay-card">
+      <div id="pig-star-badge" class="star-badge" hidden aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+      </div>
+      <img id="pig-encouragement-img" alt="A bigbert">
+      <div id="pig-encouragement-text"></div>
+      <button id="pig-encouragement-continue">Stodying</button>
+    </div>
+  </div>
+
+  <div id="shortcuts-overlay" hidden>
+    <div class="overlay-card shortcuts-card">
+      <h2>Keyboarb shortcots</h2>
+      <div id="shortcuts-list">
+        <div class="shortcut-row"><kbd>Spabe</kbd><span class="shortcut-desc">Show answer</span></div>
+        <div class="shortcut-row"><kbd>Tab</kbd><span class="shortcut-desc">Show answer (same as Space)</span></div>
+        <div class="shortcut-row"><kbd>1</kbd><span class="shortcut-desc">Rate Agaen</span></div>
+        <div class="shortcut-row"><kbd>2</kbd><span class="shortcut-desc">Rate Harb</span></div>
+        <div class="shortcut-row"><kbd>3</kbd><span class="shortcut-desc">Rate Gob</span></div>
+        <div class="shortcut-row"><kbd>4</kbd><span class="shortcut-desc">Rate Eaby</span></div>
+        <div class="shortcut-row"><kbd>U</kbd><span class="shortcut-desc">Undo</span></div>
+        <div class="shortcut-row"><kbd>?</kbd><span class="shortcut-desc">Togbolt</span></div>
+        <div class="shortcut-row"><span class="shortcut-keys"><kbd>&#8984;/Ctrl</kbd> + <kbd>Enter</kbd></span><span class="shortcut-desc">Add carb (while typing)</span></div>
+      </div>
+      <button id="shortcuts-close-btn" class="secondary-btn">Close</button>
+    </div>
+  </div>
+
+  <div id="new-deck-overlay" hidden>
+    <div class="overlay-card new-deck-card">
+      <h2>New daeck</h2>
+      <input id="new-deck-name-input" type="text" placeholder="Daeck name">
+      <div id="new-deck-status" class="import-status-text"></div>
+      <div class="new-deck-options">
+        <button id="new-deck-empty-btn" class="secondary-btn" type="button">Start empty</button>
+        <button id="new-deck-anki-btn" class="secondary-btn" type="button">Imporb Anki daeck (.apkg/.txt/.csv)</button>
+      </div>
+      <input id="new-deck-anki-input" type="file" accept=".apkg,.txt,.csv" hidden>
+      <button id="new-deck-cancel-btn" class="secondary-btn">Cancel</button>
+    </div>
+  </div>
+
+  <div id="loading-overlay" hidden>
+    <img id="spinner-img" class="pig-spinner" alt="Loading">
+  </div>
+
+<script src="js/storage.js"></script>
+<script src="js/srs.js"></script>
+<script src="js/stats.js"></script>
+<script src="js/images.js"></script>
+<script src="js/occlusion.js"></script>
+<script src="js/anki-import.js"></script>
+<script src="js/pigs.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+rules_version = '2';
+
+// Firestore security rules for "Hool's Carbs".
+//
+// Data model (see js/cloud-store.js): every user's data lives under
+//   users/{uid}/store/{key}
+// where {key} is a storage key like "study_cards_v1". A user must only ever be
+// able to read or write documents under their OWN uid — never anyone else's.
+//
+// Publish these in the Firebase console: Build → Firestore Database → Rules →
+// paste → Publish (or `firebase deploy --only firestore:rules` with the CLI).
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Everything under a user's own subtree (the /store subcollection and any
+    // future per-user data) is readable/writable only by that authenticated
+    // user. Requires a signed-in request whose uid matches the path.
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null
+                         && request.auth.uid == userId;
+    }
+
+    // Anything not explicitly matched above is denied by default (Firestore
+    // denies unless a rule allows), so no other collections are accessible.
+  }
+}
