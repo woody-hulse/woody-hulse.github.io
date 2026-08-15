@@ -18,6 +18,13 @@
   let currentUsername = null;
   let pigState = { totalPigs: 1, starCount: 0 };
 
+  // Guards the cloud sign-in entry path. A single authenticated user can be
+  // reported from three overlapping sources (the signInWithGoogle() return
+  // value on popup success, the getCurrentUser() snapshot after a redirect,
+  // and the onAuthStateChanged callback) — this flag makes entering the app
+  // idempotent so those never race into a double-enter.
+  let _cloudEntering = false;
+
   let addFrontImageDataUri = null;
   let addBackImageDataUri = null;
 
@@ -124,10 +131,10 @@
     els.authLocalForm = document.getElementById('auth-local-form');
     els.authCloudForm = document.getElementById('auth-cloud-form');
     els.googleSigninBtn = document.getElementById('google-signin-btn');
+    els.authCloudError = document.getElementById('auth-cloud-error');
 
     els.app = document.getElementById('app');
     els.userGreeting = document.getElementById('user-greeting');
-    els.cloudSignoutBtn = document.getElementById('cloud-signout-btn');
     els.pigCountDisplay = document.getElementById('pig-count-display');
     els.starCountDisplay = document.getElementById('star-count-display');
     els.starCountValue = document.getElementById('star-count-value');
@@ -136,8 +143,31 @@
       naists: document.getElementById('view-naists'),
       study: document.getElementById('view-study'),
       edit: document.getElementById('view-edit'),
-      stats: document.getElementById('view-stats')
+      stats: document.getElementById('view-stats'),
+      pigs: document.getElementById('view-pigs')
     };
+    els.settingsBtn = document.getElementById('settings-btn');
+
+    // ---- text-prompt overlay (custom window.prompt replacement) ----
+    els.textPromptOverlay = document.getElementById('text-prompt-overlay');
+    els.textPromptTitle = document.getElementById('text-prompt-title');
+    els.textPromptInput = document.getElementById('text-prompt-input');
+    els.textPromptCancel = document.getElementById('text-prompt-cancel');
+    els.textPromptConfirm = document.getElementById('text-prompt-confirm');
+
+    // ---- settings overlay ----
+    els.settingsOverlay = document.getElementById('settings-overlay');
+    els.settingsNicknameValue = document.getElementById('settings-nickname-value');
+    els.settingsNicknameBtn = document.getElementById('settings-nickname-btn');
+    els.settingsAccentSwatches = document.getElementById('settings-accent-swatches');
+    els.settingsBgSwatches = document.getElementById('settings-bg-swatches');
+    els.settingsBgImageInput = document.getElementById('settings-bg-image-input');
+    els.settingsBgImageBtn = document.getElementById('settings-bg-image-btn');
+    els.settingsBgImageClear = document.getElementById('settings-bg-image-clear');
+    els.settingsBgStatus = document.getElementById('settings-bg-status');
+    els.settingsSignoutSection = document.getElementById('settings-signout-section');
+    els.settingsSignoutBtn = document.getElementById('settings-signout-btn');
+    els.settingsCloseBtn = document.getElementById('settings-close-btn');
 
     // ---- Naists tab ----
     els.naistsBreadcrumb = document.getElementById('naists-breadcrumb');
@@ -277,29 +307,134 @@
   // above) — the plain local-username flow above this is left completely
   // untouched for the unconfigured case.
 
+  // Turns a Firebase auth error into a friendly, specific sentence. Falls
+  // back to the raw code/message so a failure is NEVER invisible.
+  function describeAuthError(err) {
+    const code = err && err.code ? err.code : '';
+    switch (code) {
+      case 'auth/operation-not-allowed':
+        return "Google sign-in isn't enabled for this project yet.";
+      case 'auth/unauthorized-domain':
+        return "This domain isn't authorized in Firebase Auth settings.";
+      case 'auth/popup-blocked':
+        return 'Your browser blocked the sign-in popup — allow popups (we\'ll also try a redirect).';
+      case 'auth/popup-closed-by-user':
+        return 'You closed the sign-in window before finishing. Give it another go.';
+      case 'auth/cancelled-popup-request':
+        return 'Another sign-in attempt is already in progress.';
+      case 'auth/network-request-failed':
+        return 'Network error reaching Firebase — check your connection and retry.';
+      default:
+        return err && (err.code || err.message)
+          ? 'Sign-in failed: ' + (err.code || err.message)
+          : 'Sign-in failed. Please try again.';
+    }
+  }
+
+  function showAuthError(message) {
+    if (!els.authCloudError) return;
+    els.authCloudError.textContent = message;
+    els.authCloudError.hidden = false;
+  }
+
+  function clearAuthError() {
+    if (!els.authCloudError) return;
+    els.authCloudError.textContent = '';
+    els.authCloudError.hidden = true;
+  }
+
+  // Activates the Firestore-backed storage for `uid`, but never lets a slow or
+  // hung Firestore call block entry into the app. If activate() doesn't settle
+  // within `ms`, we stop waiting and proceed on local storage; if it later
+  // resolves it simply installs the cloud backend and sync resumes. This is
+  // the safety net that guarantees a successful sign-in always reaches the app
+  // even when Firestore is unreachable or misconfigured.
+  async function activateCloudStoreWithTimeout(uid, ms) {
+    if (!(window.CloudStore && window.CloudStore.isConfigured)) return;
+    let timer;
+    const timeout = new Promise(function (resolve) {
+      timer = setTimeout(function () { resolve('__timeout__'); }, ms);
+    });
+    try {
+      const outcome = await Promise.race([
+        window.CloudStore.activate(uid).then(
+          function () { return '__ok__'; },
+          function (err) { console.error('CloudStore.activate failed; using local storage.', err); return '__failed__'; }
+        ),
+        timeout
+      ]);
+      if (outcome === '__timeout__') {
+        console.error('CloudStore.activate timed out; proceeding on local storage.');
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // Single, idempotent path into the app for an authenticated cloud user.
+  // Called from every source that can report a signed-in user (popup return
+  // value, post-redirect getCurrentUser snapshot, onAuthStateChanged) — the
+  // _cloudEntering guard and the els.app.hidden check make concurrent/repeat
+  // calls harmless. If anything throws, we return the user to the auth screen
+  // with a visible message instead of leaving them on a half-entered/hung page.
+  async function enterAppForUser(user) {
+    if (!user) return;
+    // Already inside the app: just keep the greeting fresh (e.g. a token
+    // refresh re-firing onAuthStateChanged) and bail.
+    if (!els.app.hidden) {
+      els.userGreeting.textContent = 'Hi, ' + (user.displayName || user.email || 'friend');
+      return;
+    }
+    if (_cloudEntering) return;
+    _cloudEntering = true;
+    try {
+      await withLoading(async function () {
+        // Load THIS user's Firestore-backed data (and run the one-time
+        // local→cloud migration) BEFORE the app reads any of it — but never
+        // let it hang the sign-in (see activateCloudStoreWithTimeout).
+        await activateCloudStoreWithTimeout(user.uid, 8000);
+        // The app identity is the user's chosen nickname (persisted per-user
+        // and cloud-synced), NEVER the Google display name. May be null on a
+        // first-ever sign-in — we prompt for it just below.
+        currentUsername = await getUsername();
+        if (els.app.hidden) await enterApp();
+      });
+      // First sign-in (or any user without a saved nickname): ask for one via
+      // the in-app "Your nameb:" popup. Non-blocking to sign-in — dismissing
+      // just leaves them as "friend" until they set one in Saettings.
+      if (!currentUsername) await promptForNickname(true);
+    } catch (err) {
+      console.error('Entering app after sign-in failed:', err);
+      // Don't strand the user on a blank/half-entered page — put them back on
+      // the auth screen with an explanation so the button never looks dead.
+      showAuthScreen();
+      showAuthError(describeAuthError(err));
+    } finally {
+      _cloudEntering = false;
+    }
+  }
+
   function setupCloudAuthScreen() {
     els.authLocalForm.hidden = true;
     els.authCloudForm.hidden = false;
 
     els.googleSigninBtn.addEventListener('click', async function () {
       els.googleSigninBtn.disabled = true;
+      clearAuthError();
       try {
-        await CloudAuth.signInWithGoogle();
-        // enterApp() runs from the onAuthStateChanged subscription below,
-        // which fires as soon as the sign-in resolves.
+        // Resolves with a user on popup success, or null when the flow handed
+        // off to a full-page redirect (navigation is underway — getRedirectResult()
+        // finishes it on the next load). On popup success we enter the app
+        // directly from this return value rather than waiting on the listener,
+        // which is exactly the path desktop Safari's popup can fail to deliver.
+        const user = await CloudAuth.signInWithGoogle();
+        if (user) await enterAppForUser(user);
       } catch (err) {
         console.error('Google sign-in failed:', err);
+        showAuthError(describeAuthError(err));
       } finally {
         els.googleSigninBtn.disabled = false;
       }
-    });
-
-    els.cloudSignoutBtn.addEventListener('click', async function () {
-      await withLoading(async function () {
-        await CloudAuth.signOutUser();
-        // showAuthScreen() runs from the onAuthStateChanged subscription
-        // below once it fires with null.
-      });
     });
 
     // Fires once immediately with the current signed-in state (Firebase
@@ -308,22 +443,11 @@
     // every future sign-in/sign-out.
     CloudAuth.onAuthStateChanged(async function (user) {
       if (user) {
-        currentUsername = user.displayName || user.email || 'friend';
-        await withLoading(async function () {
-          // Load THIS user's Firestore-backed data into the storage layer
-          // (and run the one-time local→cloud migration) BEFORE the app reads
-          // any of it. activate() is idempotent for an already-active uid, so
-          // token refreshes that re-fire this callback are cheap no-ops.
-          if (window.CloudStore && window.CloudStore.isConfigured) {
-            await window.CloudStore.activate(user.uid);
-          }
-          if (els.app.hidden) {
-            await enterApp();
-          } else {
-            els.userGreeting.textContent = currentUsername ? 'Hi, ' + currentUsername : '';
-          }
-        });
+        await enterAppForUser(user);
       } else {
+        // A spurious null while a user is actually present (can happen mid
+        // token refresh) must NOT bounce us to the auth screen.
+        if (window.CloudAuth.getCurrentUser && window.CloudAuth.getCurrentUser()) return;
         currentUsername = null;
         // Flush pending cloud writes and revert storage to local-only so the
         // signed-out app can never read/write the previous user's data.
@@ -333,20 +457,32 @@
         showAuthScreen();
       }
     });
+
+    // A redirect-based sign-in (the macOS Safari path) completes inside
+    // auth.js at module setup — before this runs — so by now getCurrentUser()
+    // already reflects it. Enter the app straight away rather than flashing
+    // the "Who ainters?" screen and relying on the listener. If the redirect
+    // instead came back with an error, surface it.
+    const existing = window.CloudAuth.getCurrentUser && window.CloudAuth.getCurrentUser();
+    if (existing) {
+      enterAppForUser(existing);
+      return;
+    }
+    const redirectErr = window.CloudAuth.getRedirectError && window.CloudAuth.getRedirectError();
+    if (redirectErr) showAuthError(describeAuthError(redirectErr));
   }
 
   function showAuthScreen() {
     els.app.hidden = true;
     els.authScreen.hidden = false;
-    els.cloudSignoutBtn.hidden = true;
   }
 
   async function enterApp() {
     els.authScreen.hidden = true;
     els.app.hidden = false;
-    els.cloudSignoutBtn.hidden = !(window.CloudAuth && window.CloudAuth.isConfigured);
 
     pigState = await getPigState();
+    await applyAppearanceFromSettings();
 
     els.userGreeting.textContent = currentUsername ? 'Hi, ' + currentUsername : '';
     updatePigCountDisplay();
@@ -359,6 +495,8 @@
     bindEditView();
     bindPigOverlay();
     bindShortcutsOverlay();
+    bindSettingsOverlay();
+    bindTextPrompt();
 
     await withLoading(async function () {
       await initScatteredPigs(els.pigField, pigState.totalPigs);
@@ -374,6 +512,262 @@
     const count = pigState.starCount || 0;
     els.starCountValue.textContent = count;
     els.starCountDisplay.hidden = count === 0;
+  }
+
+  // ---------------- appearance (background + foreground themes) ----------------
+  // Preset ids match the :root[data-bg]/[data-accent] token blocks in
+  // styles.css. `swatch` is only the preview color shown in Settings — the
+  // actual theming is done entirely by the CSS token blocks (so light/dark
+  // pairs keep following prefers-color-scheme).
+
+  const BACKGROUND_PRESETS = [
+    { id: 'paper', name: 'Paper', swatch: '#faf6f7' },
+    { id: 'slate', name: 'Slate', swatch: '#e6ebf0' },
+    { id: 'dusk', name: 'Dusk', swatch: '#ece5f6' },
+    { id: 'pig', name: 'Pig', swatch: '#fbe0ee' },
+    { id: 'grass', name: 'Grass', swatch: '#bfe08e' }
+  ];
+
+  const ACCENT_PRESETS = [
+    { id: 'raspberry', name: 'Berry', swatch: '#d6337a' },
+    { id: 'blueberry', name: 'Blue', swatch: '#3b6fd4' },
+    { id: 'matcha', name: 'Matcha', swatch: '#2f9e63' },
+    { id: 'tangerine', name: 'Tang', swatch: '#e07d2a' },
+    { id: 'grape', name: 'Grape', swatch: '#8b46c8' }
+  ];
+
+  // Applies the chosen background + accent to <html>/<body>. Preset tokens are
+  // driven by data-attributes (CSS does the light/dark work); a custom
+  // uploaded image is applied as an inline, cover-fit (never stretched)
+  // background so its aspect ratio is preserved.
+  function applyAppearance(settings) {
+    const s = settings || {};
+    const accent = s.accentPreset || 'raspberry';
+    document.documentElement.dataset.accent = accent;
+
+    const bg = s.backgroundPreset || 'paper';
+    if (bg === 'custom' && s.backgroundImage) {
+      document.documentElement.dataset.bg = 'custom';
+      document.body.style.backgroundImage = 'url("' + s.backgroundImage + '")';
+      document.body.style.backgroundSize = 'cover';
+      document.body.style.backgroundPosition = 'center';
+      document.body.style.backgroundRepeat = 'no-repeat';
+      document.body.style.backgroundAttachment = 'fixed';
+    } else {
+      document.documentElement.dataset.bg = bg;
+      document.body.style.backgroundImage = '';
+      document.body.style.backgroundSize = '';
+      document.body.style.backgroundPosition = '';
+      document.body.style.backgroundRepeat = '';
+      document.body.style.backgroundAttachment = '';
+    }
+  }
+
+  async function applyAppearanceFromSettings() {
+    try {
+      applyAppearance(await getSettings());
+    } catch (e) {
+      applyAppearance(null);
+    }
+  }
+
+  // ---------------- nickname ("Your nameb:") ----------------
+
+  // Shows the "Your nameb:" popup and, on a non-empty confirm, persists it as
+  // the per-user nickname (localStorage `study_username_v1`, cloud-synced when
+  // signed in) and refreshes the greeting. `required` only tunes copy — the
+  // user can still dismiss (they just stay "friend" until they set one).
+  async function promptForNickname(required) {
+    const name = await openTextPrompt({
+      title: 'Your nameb:',
+      placeholder: 'What should we call you?',
+      value: currentUsername || '',
+      confirmText: required ? 'Gobing' : 'Save',
+      requireNonEmpty: true
+    });
+    if (name && name.trim()) {
+      currentUsername = name.trim();
+      await setUsername(currentUsername);
+      els.userGreeting.textContent = 'Hi, ' + currentUsername;
+      if (els.settingsNicknameValue) els.settingsNicknameValue.textContent = currentUsername;
+    }
+    return currentUsername;
+  }
+
+  // ---------------- generic text-prompt overlay (window.prompt replacement) ----------------
+
+  var _textPromptResolve = null;
+
+  function bindTextPrompt() {
+    if (els.textPromptOverlay.dataset.bound) return;
+    els.textPromptOverlay.dataset.bound = '1';
+
+    els.textPromptConfirm.addEventListener('click', _resolveTextPrompt);
+    els.textPromptCancel.addEventListener('click', function () { _closeTextPrompt(null); });
+    els.textPromptInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); _resolveTextPrompt(); }
+      else if (e.key === 'Escape') { e.preventDefault(); _closeTextPrompt(null); }
+    });
+    els.textPromptInput.addEventListener('input', _syncTextPromptConfirm);
+    // Click on the dim backdrop (but not the card) cancels.
+    els.textPromptOverlay.addEventListener('mousedown', function (e) {
+      if (e.target === els.textPromptOverlay) _closeTextPrompt(null);
+    });
+  }
+
+  function _syncTextPromptConfirm() {
+    if (els.textPromptConfirm.dataset.requireNonEmpty === '1') {
+      els.textPromptConfirm.disabled = !els.textPromptInput.value.trim();
+    }
+  }
+
+  function _resolveTextPrompt() {
+    const val = els.textPromptInput.value;
+    if (els.textPromptConfirm.dataset.requireNonEmpty === '1' && !val.trim()) return;
+    _closeTextPrompt(val);
+  }
+
+  function _closeTextPrompt(result) {
+    els.textPromptOverlay.hidden = true;
+    const resolve = _textPromptResolve;
+    _textPromptResolve = null;
+    if (resolve) resolve(result === null || result === undefined ? null : result);
+  }
+
+  // Opens the in-app prompt; resolves with the entered string, or null if
+  // cancelled/dismissed. Only one prompt is shown at a time.
+  function openTextPrompt(opts) {
+    opts = opts || {};
+    bindTextPrompt();
+    if (_textPromptResolve) _closeTextPrompt(null);
+    els.textPromptTitle.textContent = opts.title || 'Naemb';
+    els.textPromptInput.value = opts.value || '';
+    els.textPromptInput.placeholder = opts.placeholder || '';
+    els.textPromptConfirm.textContent = opts.confirmText || 'OK';
+    els.textPromptConfirm.dataset.requireNonEmpty = opts.requireNonEmpty ? '1' : '';
+    _syncTextPromptConfirm();
+    els.textPromptOverlay.hidden = false;
+    setTimeout(function () { els.textPromptInput.focus(); els.textPromptInput.select(); }, 30);
+    return new Promise(function (resolve) { _textPromptResolve = resolve; });
+  }
+
+  // ---------------- settings overlay ----------------
+
+  function bindSettingsOverlay() {
+    els.settingsBtn.addEventListener('click', openSettings);
+    els.settingsCloseBtn.addEventListener('click', closeSettings);
+    els.settingsOverlay.addEventListener('mousedown', function (e) {
+      if (e.target === els.settingsOverlay) closeSettings();
+    });
+
+    els.settingsNicknameBtn.addEventListener('click', function () { promptForNickname(false); });
+
+    els.settingsSignoutBtn.addEventListener('click', async function () {
+      closeSettings();
+      await withLoading(async function () {
+        await CloudAuth.signOutUser();
+        // showAuthScreen() runs from the onAuthStateChanged(null) callback.
+      });
+    });
+
+    els.settingsBgImageBtn.addEventListener('click', function () { els.settingsBgImageInput.click(); });
+    els.settingsBgImageInput.addEventListener('change', onCustomBgImageChosen);
+    els.settingsBgImageClear.addEventListener('click', async function () {
+      const s = await getSettings();
+      s.backgroundPreset = 'paper';
+      s.backgroundImage = null;
+      await saveSettings(s);
+      applyAppearance(s);
+      await renderSettings();
+    });
+  }
+
+  async function openSettings() {
+    await renderSettings();
+    els.settingsOverlay.hidden = false;
+  }
+
+  function closeSettings() {
+    els.settingsOverlay.hidden = true;
+  }
+
+  async function renderSettings() {
+    const settings = await getSettings();
+
+    els.settingsNicknameValue.textContent = currentUsername || 'friend';
+
+    // Sign out only makes sense (and is only wired) with cloud auth on.
+    els.settingsSignoutSection.hidden = !(window.CloudAuth && window.CloudAuth.isConfigured);
+
+    _renderSwatches(els.settingsAccentSwatches, ACCENT_PRESETS, settings.accentPreset || 'raspberry', async function (id) {
+      const s = await getSettings();
+      s.accentPreset = id;
+      await saveSettings(s);
+      applyAppearance(s);
+      await renderSettings();
+    });
+
+    const activeBg = (settings.backgroundPreset === 'custom') ? 'custom' : (settings.backgroundPreset || 'paper');
+    _renderSwatches(els.settingsBgSwatches, BACKGROUND_PRESETS, activeBg, async function (id) {
+      const s = await getSettings();
+      s.backgroundPreset = id;
+      await saveSettings(s);
+      applyAppearance(s);
+      await renderSettings();
+    });
+
+    const hasCustom = settings.backgroundPreset === 'custom' && !!settings.backgroundImage;
+    els.settingsBgImageClear.hidden = !hasCustom;
+    els.settingsBgStatus.textContent = hasCustom ? 'Using a custom imaebg.' : '';
+    els.settingsBgStatus.classList.remove('error');
+  }
+
+  function _renderSwatches(container, presets, activeId, onPick) {
+    container.innerHTML = '';
+    presets.forEach(function (preset) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'swatch' + (preset.id === activeId ? ' active' : '');
+      btn.style.background = preset.swatch;
+      btn.title = preset.name;
+      btn.setAttribute('aria-label', preset.name);
+      const label = document.createElement('span');
+      label.className = 'swatch-label';
+      label.textContent = preset.name;
+      btn.appendChild(label);
+      btn.addEventListener('click', function () { onPick(preset.id); });
+      container.appendChild(btn);
+    });
+  }
+
+  async function onCustomBgImageChosen(e) {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    els.settingsBgStatus.classList.remove('error');
+    els.settingsBgStatus.textContent = 'Prosessing imaebg…';
+    try {
+      // Compress hard: page backgrounds don't need card-level fidelity, and a
+      // big data URI can blow the localStorage/Firestore-doc quota.
+      const dataUri = await fileToCompressedDataUri(file, 1280, 0.68);
+      const s = await getSettings();
+      s.backgroundPreset = 'custom';
+      s.backgroundImage = dataUri;
+      try {
+        await saveSettings(s);
+      } catch (quotaErr) {
+        // Retry once at a smaller size before giving up.
+        const smaller = await fileToCompressedDataUri(file, 800, 0.6);
+        s.backgroundImage = smaller;
+        await saveSettings(s);
+      }
+      applyAppearance(s);
+      await renderSettings();
+    } catch (err) {
+      console.error('Custom background failed:', err);
+      els.settingsBgStatus.classList.add('error');
+      els.settingsBgStatus.textContent = 'That imaebg was too big or unreadable — try a smaller one.';
+    }
   }
 
   // ---------------- tabs ----------------
@@ -579,30 +973,13 @@
   function bindNaistsView() {
     els.naistsSearch.addEventListener('input', function () { renderNaistsBrowser(); });
 
-    // Dropping onto the list's empty space moves the item to whatever level
-    // is currently being browsed. Row/crumb drop handlers stopPropagation,
-    // so this only fires for drops that miss every specific target.
-    els.naistsList.addEventListener('dragover', function (e) {
-      if (!dragItem) return;
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      els.naistsList.classList.add('drag-over-root');
-    });
-    els.naistsList.addEventListener('dragleave', function (e) {
-      if (els.naistsList.contains(e.relatedTarget)) return;
-      els.naistsList.classList.remove('drag-over-root');
-    });
-    els.naistsList.addEventListener('drop', function (e) {
-      if (!dragItem) return;
-      e.preventDefault();
-      els.naistsList.classList.remove('drag-over-root');
-      const item = dragItem;
-      _cancelSpring();
-      performMove(item, browseNaistId);
-    });
-
     els.newNaistBtn.addEventListener('click', async function () {
-      const name = prompt('New naist name:');
+      const name = await openTextPrompt({
+        title: 'New naist',
+        placeholder: 'Naist name',
+        confirmText: 'Create',
+        requireNonEmpty: true
+      });
       if (!name || !name.trim()) return;
       await addNaist(name.trim(), browseNaistId);
       await renderNaistsBrowser();
@@ -655,7 +1032,6 @@
       browseNaistId = naistId;
       renderNaistsBrowser();
     });
-    wireBreadcrumbDropTargets();
 
     els.naistsList.innerHTML = '';
     const ctx = { naists: naists, decks: decks, cards: cards, now: now };
@@ -742,12 +1118,15 @@
   // Hovering a collapsed naist mid-drag springs it open (spring-loaded
   // folders) so you can drill several levels deep in one continuous drag.
 
-  function buildDragHandle() {
+  function buildDragHandle(kind, id, label) {
     const handle = document.createElement('span');
     handle.className = 'drag-handle';
     handle.title = 'Drag to move';
     handle.setAttribute('aria-hidden', 'true');
     handle.innerHTML = '<svg viewBox="0 0 16 16"><circle cx="5" cy="4" r="1.35"/><circle cx="5" cy="8" r="1.35"/><circle cx="5" cy="12" r="1.35"/><circle cx="11" cy="4" r="1.35"/><circle cx="11" cy="8" r="1.35"/><circle cx="11" cy="12" r="1.35"/></svg>';
+    handle.addEventListener('pointerdown', function (e) {
+      beginPointerDrag(e, kind, id, label);
+    });
     return handle;
   }
 
@@ -786,67 +1165,146 @@
     await renderNaistsBrowser();
   }
 
-  function makeRowDraggable(row, kind, id) {
-    row.setAttribute('draggable', 'true');
-    row.addEventListener('dragstart', function (e) {
-      // Start a drag from the grip handle anywhere, or from any non-control
-      // part of the row — but never from a button/select/etc, so clicking
-      // Stody/Edit/Rename/Delete keeps working normally.
-      if (!e.target.closest('.drag-handle') &&
-          e.target.closest('button, select, input, textarea, a')) {
-        e.preventDefault();
-        return;
-      }
-      dragItem = { kind: kind, id: id };
-      dragForbidden = kind === 'naist'
+  // ----- unified pointer-based drag (mouse + touch) -----
+  // HTML5 drag-and-drop does not work on iOS/Android touch, so both the
+  // desktop and mobile experience are built on Pointer Events instead. A drag
+  // only starts from the grip handle (so a row's Stody/Edit/etc. buttons keep
+  // working), and only after the pointer moves past a small threshold (so a
+  // tap on the handle is a no-op). A floating ghost follows the pointer, and
+  // drop targets are resolved by hit-testing whatever's under the pointer.
+
+  var _ptrDrag = null; // { kind, id, label, forbidden, startX, startY, active, ghost, sourceRow, pointerId }
+
+  function beginPointerDrag(e, kind, id, label) {
+    if (_ptrDrag) return;
+    if (e.button !== undefined && e.button > 0) return; // left / touch / pen only
+    e.preventDefault();
+    // Release the implicit pointer capture touch puts on the handle, otherwise
+    // pointermove keeps firing at the (soon-removed) handle instead of the
+    // element under the finger — which breaks elementFromPoint hit-testing and
+    // dies when a spring re-render replaces the source row.
+    if (e.target && e.target.releasePointerCapture && e.target.hasPointerCapture &&
+        e.target.hasPointerCapture(e.pointerId)) {
+      try { e.target.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+    _ptrDrag = {
+      kind: kind, id: id, label: label || '',
+      forbidden: kind === 'naist'
         ? new Set([id].concat(collectDescendantNaistIds(lastRenderedNaists, id)))
-        : null;
-      row.classList.add('dragging');
-      if (e.dataTransfer) {
-        e.dataTransfer.effectAllowed = 'move';
-        try { e.dataTransfer.setData('text/plain', kind + ':' + id); } catch (_) {}
-      }
-    });
-    row.addEventListener('dragend', function () {
-      dragItem = null;
-      dragForbidden = null;
-      row.classList.remove('dragging');
+        : null,
+      startX: e.clientX, startY: e.clientY,
+      active: false, ghost: null, pointerId: e.pointerId,
+      sourceRow: e.currentTarget.closest ? e.currentTarget.closest('.browse-row') : null
+    };
+    window.addEventListener('pointermove', _onPtrDragMove, true);
+    window.addEventListener('pointerup', _onPtrDragEnd, true);
+    window.addEventListener('pointercancel', _onPtrDragEnd, true);
+  }
+
+  function _onPtrDragMove(e) {
+    if (!_ptrDrag) return;
+    if (!_ptrDrag.active) {
+      if (Math.abs(e.clientX - _ptrDrag.startX) + Math.abs(e.clientY - _ptrDrag.startY) < 6) return;
+      _ptrDrag.active = true;
+      dragItem = { kind: _ptrDrag.kind, id: _ptrDrag.id };
+      dragForbidden = _ptrDrag.forbidden;
+      if (_ptrDrag.sourceRow) _ptrDrag.sourceRow.classList.add('dragging');
+      document.body.classList.add('drag-active');
+      _ptrDrag.ghost = _buildDragGhost(_ptrDrag);
+      document.body.appendChild(_ptrDrag.ghost);
+    }
+    e.preventDefault();
+    _positionGhost(_ptrDrag.ghost, e.clientX, e.clientY);
+    _updateDropHighlight(_dropElementFromPoint(e.clientX, e.clientY));
+  }
+
+  function _onPtrDragEnd(e) {
+    if (!_ptrDrag) return;
+    window.removeEventListener('pointermove', _onPtrDragMove, true);
+    window.removeEventListener('pointerup', _onPtrDragEnd, true);
+    window.removeEventListener('pointercancel', _onPtrDragEnd, true);
+    const drag = _ptrDrag;
+    _ptrDrag = null;
+    if (drag.active) {
+      const targetId = _resolveDropNaistId(_dropElementFromPoint(e.clientX, e.clientY));
+      if (drag.ghost && drag.ghost.parentNode) drag.ghost.parentNode.removeChild(drag.ghost);
+      if (drag.sourceRow) drag.sourceRow.classList.remove('dragging');
+      document.body.classList.remove('drag-active');
       _cancelSpring();
       _clearDropHighlights();
-    });
+      const item = { kind: drag.kind, id: drag.id };
+      dragItem = null;
+      dragForbidden = null;
+      if (targetId !== undefined) performMove(item, targetId);
+    } else {
+      dragItem = null;
+      dragForbidden = null;
+    }
   }
 
-  function makeNaistDropTarget(el, targetNaistId) {
-    el.addEventListener('dragover', function (e) {
-      if (!_dropAllowedHere(targetNaistId)) return;
-      e.preventDefault();
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      el.classList.add('drag-over');
-      _springOpen(targetNaistId);
-    });
-    el.addEventListener('dragleave', function (e) {
-      if (e.currentTarget.contains && e.currentTarget.contains(e.relatedTarget)) return;
-      el.classList.remove('drag-over');
-      _cancelSpring(targetNaistId);
-    });
-    el.addEventListener('drop', function (e) {
-      if (!_dropAllowedHere(targetNaistId)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      el.classList.remove('drag-over');
-      const item = dragItem;
-      _cancelSpring();
-      performMove(item, targetNaistId);
-    });
+  function _buildDragGhost(drag) {
+    const g = document.createElement('div');
+    g.className = 'drag-ghost';
+    if (drag.kind === 'naist') g.appendChild(buildNaistIcon());
+    const span = document.createElement('span');
+    span.textContent = drag.label || (drag.kind === 'naist' ? 'Naist' : 'Daeck');
+    g.appendChild(span);
+    return g;
   }
 
-  // Synchronous best-effort validity check for highlight/dropEffect. The
-  // authoritative cycle check runs again (with fresh data) in performMove.
-  function _dropAllowedHere(targetNaistId) {
-    if (!dragItem) return false;
-    const target = targetNaistId || null;
-    if (dragItem.kind === 'naist' && dragForbidden && target && dragForbidden.has(target)) return false;
-    return true;
+  function _positionGhost(g, x, y) {
+    if (!g) return;
+    g.style.left = x + 'px';
+    g.style.top = y + 'px';
+  }
+
+  // Hit-test what's under the pointer, with the ghost temporarily hidden so it
+  // never occludes the real drop target.
+  function _dropElementFromPoint(x, y) {
+    var restore;
+    if (_ptrDrag && _ptrDrag.ghost) { restore = _ptrDrag.ghost.style.display; _ptrDrag.ghost.style.display = 'none'; }
+    const el = document.elementFromPoint(x, y);
+    if (_ptrDrag && _ptrDrag.ghost) _ptrDrag.ghost.style.display = restore || '';
+    return el;
+  }
+
+  // Maps the element under the pointer to the naist id an item would move INTO
+  // (null = top level), or undefined if it's not a valid drop target for the
+  // current drag. Naist rows / breadcrumb crumbs target that naist; a deck row
+  // or the list background target the level currently being browsed.
+  function _resolveDropTargetRaw(el) {
+    if (!el || !el.closest) return undefined;
+    const crumb = el.closest('.breadcrumb-crumb');
+    if (crumb && els.naistsBreadcrumb.contains(crumb)) {
+      const raw = crumb.dataset.naistId;
+      return raw === undefined || raw === '' ? null : raw;
+    }
+    const naistRow = el.closest('.browse-row-naist');
+    if (naistRow && naistRow.dataset.naistId) return naistRow.dataset.naistId;
+    if (el.closest('.browse-row-deck')) return browseNaistId || null;
+    if (els.naistsList.contains(el)) return browseNaistId || null;
+    return undefined;
+  }
+
+  function _resolveDropNaistId(el) {
+    const t = _resolveDropTargetRaw(el);
+    if (t === undefined) return undefined;
+    if (dragItem && dragItem.kind === 'naist' && dragForbidden && t && dragForbidden.has(t)) return undefined;
+    return t;
+  }
+
+  function _updateDropHighlight(el) {
+    _clearDropHighlights();
+    if (!dragItem || !el || !el.closest) return;
+    const t = _resolveDropTargetRaw(el);
+    if (t === undefined) return;
+    if (dragItem.kind === 'naist' && dragForbidden && t && dragForbidden.has(t)) return;
+
+    const crumb = el.closest('.breadcrumb-crumb');
+    if (crumb && els.naistsBreadcrumb.contains(crumb)) { crumb.classList.add('drag-over'); return; }
+    const naistRow = el.closest('.browse-row-naist');
+    if (naistRow && naistRow.dataset.naistId) { naistRow.classList.add('drag-over'); _springOpen(t); return; }
+    els.naistsList.classList.add('drag-over-root');
   }
 
   // Spring-loaded folders: after hovering a collapsed naist for a beat while
@@ -876,13 +1334,6 @@
       .forEach(function (el) { el.classList.remove('drag-over'); el.classList.remove('drag-over-root'); });
   }
 
-  function wireBreadcrumbDropTargets() {
-    Array.prototype.slice.call(els.naistsBreadcrumb.querySelectorAll('.breadcrumb-crumb')).forEach(function (btn) {
-      const raw = btn.dataset.naistId;
-      makeNaistDropTarget(btn, raw === undefined || raw === '' ? null : raw);
-    });
-  }
-
   // A naist row: click the main area to navigate into it (unchanged
   // behavior). A disclosure chevron expands/collapses its contents inline
   // (Finder list-view style) without navigating. Distinguished from a deck
@@ -892,9 +1343,10 @@
   function renderNaistRow(naist, rollup, depth, hasChildren, ctx) {
     const row = document.createElement('div');
     row.className = 'browse-row browse-row-naist';
+    row.dataset.naistId = naist.id;
     if (depth) _applyRowIndent(row, depth);
 
-    row.appendChild(buildDragHandle());
+    row.appendChild(buildDragHandle('naist', naist.id, naist.name));
 
     const expanded = expandedNaistIds.has(naist.id);
     const chevron = document.createElement('button');
@@ -946,7 +1398,12 @@
     renameBtn.className = 'secondary-btn';
     renameBtn.textContent = 'Rename';
     renameBtn.addEventListener('click', async function () {
-      const newName = prompt('Rename naist:', naist.name);
+      const newName = await openTextPrompt({
+        title: 'Rename naist',
+        value: naist.name,
+        confirmText: 'Rename',
+        requireNonEmpty: true
+      });
       if (!newName || !newName.trim()) return;
       await renameNaist(naist.id, newName.trim());
       await renderNaistsBrowser();
@@ -963,8 +1420,6 @@
     row.appendChild(mainBtn);
     row.appendChild(actions);
 
-    makeRowDraggable(row, 'naist', naist.id);
-    makeNaistDropTarget(row, naist.id);
     return row;
   }
 
@@ -980,7 +1435,7 @@
     row.className = 'browse-row browse-row-deck';
     if (depth) _applyRowIndent(row, depth);
 
-    row.appendChild(buildDragHandle());
+    row.appendChild(buildDragHandle('deck', deck.id, deck.name));
     const spacer = document.createElement('span');
     spacer.className = 'naist-chevron-spacer';
     spacer.setAttribute('aria-hidden', 'true');
@@ -1047,7 +1502,12 @@
     renameBtn.className = 'secondary-btn';
     renameBtn.textContent = 'Rename';
     renameBtn.addEventListener('click', async function () {
-      const newName = prompt('Rename daeck:', deck.name);
+      const newName = await openTextPrompt({
+        title: 'Rename daeck',
+        value: deck.name,
+        confirmText: 'Rename',
+        requireNonEmpty: true
+      });
       if (!newName || !newName.trim()) return;
       await renameDeck(deck.id, newName.trim());
       await renderNaistsBrowser();
@@ -1068,7 +1528,6 @@
     row.appendChild(primary);
     row.appendChild(actions);
 
-    makeRowDraggable(row, 'deck', deck.id);
     return row;
   }
 
@@ -1565,7 +2024,12 @@
       const decks = await getDecks();
       const deck = decks.find(function (d) { return d.id === editDeckId; });
       if (!deck) return;
-      const newName = prompt('Rename daeck:', deck.name);
+      const newName = await openTextPrompt({
+        title: 'Rename daeck',
+        value: deck.name,
+        confirmText: 'Rename',
+        requireNonEmpty: true
+      });
       if (!newName || !newName.trim()) return;
       await renameDeck(editDeckId, newName.trim());
       await renderEditDeck();

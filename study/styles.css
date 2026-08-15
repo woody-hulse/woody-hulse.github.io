@@ -312,6 +312,26 @@ input:focus, textarea:focus, select:focus {
   border-color: var(--ink-faint);
 }
 
+/* Sign-in failure message — quiet but unmissable, so a blocked/disabled
+   provider never looks like a dead button. Reads in both light and dark
+   via the rating-again (red) token. */
+.auth-error {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--rating-again) 14%, var(--surface));
+  border: 1.5px solid var(--rating-again);
+  color: var(--rating-again-dark);
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.auth-error[hidden] {
+  display: none;
+}
+
 .google-g-icon {
   width: 18px;
   height: 18px;
@@ -436,9 +456,12 @@ input:focus, textarea:focus, select:focus {
   flex-wrap: wrap;
 }
 
-#shortcuts-btn {
+#tab-row-tools {
   grid-column: 3;
   justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .icon-btn {
@@ -460,6 +483,19 @@ input:focus, textarea:focus, select:focus {
   background: var(--bg-deep);
   border-color: var(--ink-faint);
   color: var(--ink);
+}
+
+/* Line-art icons inside an icon button (e.g. the settings gear) match the
+   nest/cards/trash icon family — stroked, not filled. */
+.icon-btn svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .tab-btn {
@@ -609,13 +645,13 @@ input:focus, textarea:focus, select:focus {
 .deck-row-name {
   font-weight: 700;
   color: var(--ink);
-  font-size: 1.02rem;
+  font-size: 0.92rem;
 }
 
 .deck-row-counts {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
@@ -627,13 +663,14 @@ input:focus, textarea:focus, select:focus {
    the dark-mode override since they consume the same --gold-* tokens
    redefined there. */
 .deck-due-badge {
-  font-size: 0.82rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  padding: 3px 10px;
+  padding: 2px 7px;
   border-radius: var(--radius-sm);
   background: var(--gold-tint);
   color: var(--gold-dark);
   border: 1px solid var(--gold);
+  white-space: nowrap;
 }
 
 .deck-due-badge.none {
@@ -645,13 +682,14 @@ input:focus, textarea:focus, select:focus {
 /* "Total" is neutral information, not a call to action — plain grey,
    using the same muted tokens as the due badge's zero state. */
 .deck-total-badge {
-  font-size: 0.82rem;
+  font-size: 0.72rem;
   font-weight: 600;
-  padding: 3px 10px;
+  padding: 2px 7px;
   border-radius: var(--radius-sm);
   background: var(--bg-deep);
   color: var(--ink-faint);
   border: 1px solid var(--line);
+  white-space: nowrap;
 }
 
 .deck-picker-empty {
@@ -781,11 +819,11 @@ input:focus, textarea:focus, select:focus {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  padding: 10px 12px 10px 14px;
+  padding: 5px 10px;
   box-shadow: var(--shadow-sm);
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -795,23 +833,27 @@ input:focus, textarea:focus, select:focus {
   box-shadow: var(--shadow-md);
 }
 
+/* Naist and deck rows share identical shell padding so the drag handle,
+   chevron slot, and title column line up pixel-for-pixel between the two. */
 .browse-row-naist {
-  padding: 8px 14px 8px 10px;
+  padding: 5px 10px;
 }
 
 /* The clickable/navigable part of a row (naist: navigate in; deck: just
-   informational — decks act via their explicit Stody/Cram/Edit buttons). */
+   informational — decks act via their explicit Stody/Cram/Edit buttons).
+   Both row types use this as their "title column" so a naist's nest icon and
+   a deck's name begin at the same x after the handle + chevron slot. */
 .browse-row-main {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   background: transparent;
   border: none;
-  padding: 6px 4px;
-  min-height: auto;
+  padding: 2px 0;
+  min-height: 32px;
   text-align: left;
 }
 
@@ -819,31 +861,35 @@ input:focus, textarea:focus, select:focus {
   transform: translateY(1px);
 }
 
+/* Deck title column: name + count badges on one condensed line, wrapping to
+   a second short line only when truly cramped. */
 .browse-row-info {
-  flex: 1 1 220px;
+  flex: 1 1 200px;
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .naist-row-info {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .naist-row-meta {
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   color: var(--ink-faint);
 }
 
 .browse-row-primary-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   flex-shrink: 0;
   flex-wrap: wrap;
 }
@@ -851,16 +897,16 @@ input:focus, textarea:focus, select:focus {
 .browse-row-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   flex-shrink: 0;
   flex-wrap: wrap;
 }
 
 .browse-row-actions .secondary-btn,
 .browse-row-primary-actions .secondary-btn {
-  padding: 7px 12px;
-  min-height: 36px;
-  font-size: 0.8rem;
+  padding: 5px 10px;
+  min-height: 32px;
+  font-size: 0.76rem;
 }
 
 /* A deck row's prominent call-to-study action — the one spot in the app
@@ -868,13 +914,13 @@ input:focus, textarea:focus, select:focus {
    short of the accent "primary form action" buttons elsewhere (Add Carb,
    Show Answer, Save settings). */
 .browse-row-stody-btn {
-  padding: 8px 16px;
+  padding: 6px 14px;
   min-height: 36px;
   border-radius: var(--radius-md);
   background: var(--accent);
   color: var(--white);
   font-weight: 700;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   transition: background 0.15s ease;
 }
 
@@ -887,16 +933,25 @@ input:focus, textarea:focus, select:focus {
 /* Grip handle: the always-there "this row is draggable" affordance. The
    whole row is draggable, but the handle is the unambiguous grab point
    (and the only one that works over a naist row's <button> main area). */
+/* Grip handle: the always-there "this row is draggable" affordance and the
+   grab point for the pointer-based drag (mouse + touch). touch-action:none
+   stops the browser from scrolling/zooming when a drag starts on the handle,
+   which is what lets touch drags work on iOS/Android. Sized as a comfortable
+   tap target while keeping the row compact. */
 .drag-handle {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
+  width: 24px;
+  min-height: 32px;
   align-self: stretch;
   color: var(--ink-faint);
   cursor: grab;
-  opacity: 0.55;
+  opacity: 0.7;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
   transition: opacity 0.15s ease, color 0.15s ease;
 }
 
@@ -910,8 +965,8 @@ input:focus, textarea:focus, select:focus {
 }
 
 .drag-handle svg {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   fill: currentColor;
   pointer-events: none;
 }
@@ -1931,7 +1986,7 @@ select:focus,
     justify-content: center;
   }
 
-  #shortcuts-btn {
+  #tab-row-tools {
     grid-column: 2;
   }
 
@@ -2205,4 +2260,299 @@ select:focus,
 
 .occlusion-mask.revealed {
   display: none;
+}
+
+/* =========================================================================
+   PIGS TAB — deliberately empty, transparent window onto #pig-field
+   ========================================================================= */
+
+#view-pigs {
+  background: transparent;
+  padding: 0;
+  /* let clicks pass through to whatever's below; the sprites themselves are
+     pointer-events:none decoration, so nothing here needs interaction */
+  pointer-events: none;
+}
+
+/* =========================================================================
+   THEME PRESETS — background (data-bg) + foreground/accent (data-accent)
+   set on <html>. Each preset supplies a light value here and a dark value in
+   the media block below (so prefers-color-scheme still picks the half). The
+   attribute selectors outrank the base :root / dark :root token rules, so a
+   chosen preset always wins in both schemes. 'paper'/'raspberry' are the
+   defaults and intentionally have no override (they ARE the base tokens). */
+
+:root[data-bg="slate"] { --bg: #f2f5f8; --bg-deep: #e6ebf0; }
+:root[data-bg="dusk"]  { --bg: #f6f3fb; --bg-deep: #ece5f6; }
+:root[data-bg="pig"]   { --bg: #fdeef5; --bg-deep: #fbe0ee; }
+:root[data-bg="grass"] { --bg: #d7e9bb; --bg-deep: #c8dea6; }
+
+:root[data-accent="blueberry"] { --accent: #3b6fd4; --accent-dark: #2b56ab; --accent-light: #dde8fb; --accent-tint: #eff4fd; }
+:root[data-accent="matcha"]    { --accent: #2f9e63; --accent-dark: #237a4b; --accent-light: #d6f0e0; --accent-tint: #eefaf2; }
+:root[data-accent="tangerine"] { --accent: #e07d2a; --accent-dark: #bd6416; --accent-light: #fce6d2; --accent-tint: #fef5ec; }
+:root[data-accent="grape"]     { --accent: #8b46c8; --accent-dark: #6f34a3; --accent-light: #eaddf7; --accent-tint: #f6effc; }
+
+/* Grass texture: a tileable SVG repeated at its natural size (never scaled to
+   fill, so blades keep their aspect ratio). Base color still comes from --bg
+   so the tint shows between blades and behind translucent UI. */
+:root[data-bg="grass"] body {
+  background-color: var(--bg);
+  background-image: url("resources/grass-tile.svg");
+  background-repeat: repeat;
+  background-size: 48px 48px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-bg="slate"] { --bg: #0f1417; --bg-deep: #161c21; }
+  :root[data-bg="dusk"]  { --bg: #14101c; --bg-deep: #1d1728; }
+  :root[data-bg="pig"]   { --bg: #1e1017; --bg-deep: #291320; }
+  :root[data-bg="grass"] { --bg: #1c2415; --bg-deep: #232d19; }
+
+  :root[data-accent="blueberry"] { --accent: #6b9de8; --accent-dark: #8fb5ef; --accent-light: #1e2b45; --accent-tint: #161f30; }
+  :root[data-accent="matcha"]    { --accent: #56b784; --accent-dark: #78c99e; --accent-light: #183526; --accent-tint: #12251a; }
+  :root[data-accent="tangerine"] { --accent: #f0a15a; --accent-dark: #f4b77e; --accent-light: #3a2413; --accent-tint: #2a1a0d; }
+  :root[data-accent="grape"]     { --accent: #b57ce0; --accent-dark: #c79aec; --accent-light: #2e1c40; --accent-tint: #22142f; }
+
+  :root[data-bg="grass"] body {
+    background-image: url("resources/grass-tile-dark.svg");
+  }
+}
+
+/* =========================================================================
+   POINTER-BASED DRAG (mouse + touch) — floating ghost + drag state
+   ========================================================================= */
+
+/* While a drag is active, suppress text selection everywhere and hint that a
+   move is in progress. */
+body.drag-active {
+  cursor: grabbing;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The little label that follows the pointer/finger during a drag. */
+.drag-ghost {
+  position: fixed;
+  z-index: 200;
+  top: 0;
+  left: 0;
+  transform: translate(12px, 12px);
+  pointer-events: none;
+  max-width: 60vw;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--white);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 0.82rem;
+  box-shadow: var(--shadow-lg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.drag-ghost svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+/* =========================================================================
+   SHARED PRIMARY / DANGER BUTTONS
+   ========================================================================= */
+
+.primary-btn {
+  padding: 10px 22px;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--white);
+  font-weight: 700;
+  font-size: 0.9rem;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.primary-btn:hover {
+  background: var(--accent-dark);
+}
+
+.primary-btn:active {
+  transform: translateY(1px);
+}
+
+.primary-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.danger-btn {
+  color: var(--rating-again-dark);
+  border-color: var(--rating-again);
+}
+
+.danger-btn:hover {
+  background: color-mix(in srgb, var(--rating-again) 12%, var(--surface));
+  border-color: var(--rating-again);
+}
+
+/* =========================================================================
+   TEXT-PROMPT OVERLAY (custom replacement for window.prompt)
+   ========================================================================= */
+
+#text-prompt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(31, 35, 40, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  padding: 20px;
+}
+
+.text-prompt-card {
+  text-align: left;
+  align-items: stretch;
+  max-width: 380px;
+}
+
+.text-prompt-card h2 {
+  text-align: center;
+  font-size: 1.15rem;
+}
+
+#text-prompt-input {
+  width: 100%;
+}
+
+.text-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* =========================================================================
+   SETTINGS OVERLAY
+   ========================================================================= */
+
+#settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(31, 35, 40, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  padding: 20px;
+}
+
+.settings-card {
+  text-align: left;
+  align-items: stretch;
+  max-width: 440px;
+  gap: 18px;
+}
+
+.settings-card h2 {
+  text-align: center;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-label {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.settings-nickname-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-nickname-value {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.swatch-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* A theme swatch: a rounded chip previewing the preset's key color, with a
+   ring when active. Works for both accent and background presets. */
+.swatch {
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--line-strong);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.1s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.swatch:hover {
+  transform: translateY(-1px);
+  border-color: var(--ink-faint);
+}
+
+.swatch.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.swatch-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: var(--ink);
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0));
+  padding-bottom: 2px;
+}
+
+.settings-bg-image-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-status {
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+  min-height: 1.1em;
+}
+
+.settings-status.error {
+  color: var(--rating-again-dark);
+  font-weight: 600;
 }

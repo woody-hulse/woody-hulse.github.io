@@ -54,6 +54,7 @@
           </svg>
           <span>Sign in with Google</span>
         </button>
+        <div id="auth-cloud-error" class="auth-error" role="alert" hidden></div>
       </div>
     </div>
   </div>
@@ -71,12 +72,11 @@
           <span id="star-count-value">0</span>
         </span>
       </div>
-      <button id="cloud-signout-btn" class="secondary-btn" type="button" hidden>Sign out</button>
     </header>
 
-    <!-- Tab bar row: tabs stay centered (grid center cell) while the ?
-         help button is right-aligned within the same centered content
-         column. -->
+    <!-- Tab bar row: tabs stay centered (grid center cell) while the
+         settings gear + ? help button are right-aligned within the same
+         centered content column. -->
     <div id="tab-row">
       <nav id="tab-nav">
         <button class="tab-btn" data-tab="study" title="Stody" aria-label="Stody">
@@ -91,8 +91,16 @@
         <button class="tab-btn" data-tab="stats" title="Staets" aria-label="Staets">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M7 20v-6M12 20v-10M17 20v-4"/></svg>
         </button>
+        <button class="tab-btn" data-tab="pigs" title="Bigberts" aria-label="Bigberts">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 11.5a4.5 4 0 0 1 4.5-4h6a4.5 4 0 0 1 4.5 4v1.5a4 4 0 0 1-4 4h-7a4 4 0 0 1-4-4z"/><ellipse cx="13.5" cy="14" rx="3" ry="2.4"/><path d="M12.2 13.7v.02M14.8 13.7v.02"/><path d="M6.5 8.2 5.4 5.9M9 7.1 8.4 4.7"/><path d="M9.5 11h.02"/></svg>
+        </button>
       </nav>
-      <button id="shortcuts-btn" class="icon-btn" type="button" title="Keyboarb shortcots" aria-label="Keyboarb shortcots">?</button>
+      <div id="tab-row-tools">
+        <button id="settings-btn" class="icon-btn" type="button" title="Saettings" aria-label="Saettings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 3.5v2.2M12 18.3v2.2M4.5 12H2.3M21.7 12h-2.2M6.2 6.2 4.6 4.6M19.4 19.4l-1.6-1.6M17.8 6.2l1.6-1.6M4.6 19.4l1.6-1.6"/></svg>
+        </button>
+        <button id="shortcuts-btn" class="icon-btn" type="button" title="Keyboarb shortcots" aria-label="Keyboarb shortcots">?</button>
+      </div>
     </div>
 
     <main id="main-content">
@@ -261,6 +269,11 @@
         </div>
       </section>
 
+      <!-- PIGS VIEW — deliberately empty & transparent. It's just a window
+           onto the accumulated scattered pig sprites (#pig-field) sitting
+           behind the app, so nothing opaque covers them here. -->
+      <section id="view-pigs" class="view"></section>
+
     </main>
   </div>
 
@@ -308,6 +321,58 @@
       </div>
       <input id="new-deck-anki-input" type="file" accept=".apkg,.txt,.csv" hidden>
       <button id="new-deck-cancel-btn" class="secondary-btn">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Generic in-app text prompt (replaces window.prompt for New naist,
+       rename naist/daeck, and the "Your nameb:" nickname flow). Driven by
+       openTextPrompt() in app.js. -->
+  <div id="text-prompt-overlay" hidden>
+    <div class="overlay-card text-prompt-card">
+      <h2 id="text-prompt-title">Naemb</h2>
+      <input id="text-prompt-input" type="text" autocomplete="off">
+      <div class="text-prompt-actions">
+        <button id="text-prompt-cancel" class="secondary-btn" type="button">Cancel</button>
+        <button id="text-prompt-confirm" class="primary-btn" type="button">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings overlay: nickname, foreground (accent) + background themes,
+       custom background image, and (cloud only) sign out. -->
+  <div id="settings-overlay" hidden>
+    <div class="overlay-card settings-card">
+      <h2>Saettings</h2>
+
+      <div class="settings-section">
+        <h3 class="settings-label">Your nameb</h3>
+        <div class="settings-nickname-row">
+          <span id="settings-nickname-value" class="settings-nickname-value"></span>
+          <button id="settings-nickname-btn" class="secondary-btn" type="button">Change</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3 class="settings-label">Foregroond color</h3>
+        <div id="settings-accent-swatches" class="swatch-grid"></div>
+      </div>
+
+      <div class="settings-section">
+        <h3 class="settings-label">Backgroond</h3>
+        <div id="settings-bg-swatches" class="swatch-grid"></div>
+        <div class="settings-bg-image-row">
+          <input id="settings-bg-image-input" type="file" accept="image/*" hidden>
+          <button id="settings-bg-image-btn" class="secondary-btn" type="button">Upload imaebg</button>
+          <button id="settings-bg-image-clear" class="secondary-btn" type="button" hidden>Remove imaebg</button>
+        </div>
+        <div id="settings-bg-status" class="settings-status"></div>
+      </div>
+
+      <div class="settings-section" id="settings-signout-section" hidden>
+        <button id="settings-signout-btn" class="secondary-btn danger-btn" type="button">Sign out</button>
+      </div>
+
+      <button id="settings-close-btn" class="secondary-btn" type="button">Close</button>
     </div>
   </div>
 

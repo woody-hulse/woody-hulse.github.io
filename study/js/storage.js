@@ -18,7 +18,15 @@ const STUDY_REVIEW_LOG_KEY = 'study_review_log_v1';
 const STUDY_LAST_DECK_KEY = 'study_last_deck_v1';
 
 // sessionCardLimit: 0 means "no limit" (Anki-style per-session review cap).
-const DEFAULT_SETTINGS = { sessionCardLimit: 0 };
+// backgroundPreset/accentPreset name a themed token pair (see styles.css
+// :root[data-bg]/[data-accent]); 'custom' backgroundPreset uses the stored
+// (compressed) backgroundImage data URI instead of a preset.
+const DEFAULT_SETTINGS = {
+  sessionCardLimit: 0,
+  backgroundPreset: 'paper',
+  accentPreset: 'raspberry',
+  backgroundImage: null
+};
 const DEFAULT_PIG_STATE = { totalPigs: 1, starCount: 0 };
 const REVIEW_LOG_MAX_ENTRIES = 5000;
 
