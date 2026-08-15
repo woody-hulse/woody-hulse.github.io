@@ -29,13 +29,18 @@
 </head>
 <body>
 
-  <!-- ===================== AUTH SCREEN ===================== -->
-  <div id="auth-screen">
+  <!-- ===================== AUTH SCREEN =====================
+       The whole screen AND both forms start hidden. app.js keeps them hidden
+       behind a "checking session" loading state until it knows the real
+       answer (already signed in → skip straight to the app; signed out +
+       cloud configured → show Google; unconfigured → show the local username
+       box). This is what prevents the first-paint flash of the wrong form. -->
+  <div id="auth-screen" hidden>
     <div class="auth-card">
       <img class="auth-mascot" src="resources/pigs/mascot-knorrig.png" alt="" aria-hidden="true">
       <h1>Hool's Carbs</h1>
       <p>Who ainters?</p>
-      <div class="auth-form" id="auth-local-form">
+      <div class="auth-form" id="auth-local-form" hidden>
         <input id="username-input" type="text" placeholder="What should we call you?" autocomplete="off">
         <button id="username-submit">Gobing</button>
       </div>

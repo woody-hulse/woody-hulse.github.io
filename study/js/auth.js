@@ -26,6 +26,14 @@
 //     // paths etc).
 //     getCurrentUser: () => ({uid, displayName, email, photoURL}) | null,
 //
+//     // Promise of the DEFINITIVE initial signed-in user (same shape) or
+//     // null, resolved after getRedirectResult() and the first
+//     // onAuthStateChanged have settled. Callers await this to gate their
+//     // auth UI so they never show a sign-in button before a persisted or
+//     // just-completed-redirect session has been restored. Resolves null
+//     // when !isConfigured.
+//     getInitialUser: () => Promise<({uid, displayName, email, photoURL}) | null>,
+//
 //     // Opens the Google sign-in popup. Resolves with the same user shape
 //     // as getCurrentUser() on success. Rejects (throws) on failure or if
 //     // the user closes/cancels the popup — callers should wrap in
@@ -110,6 +118,7 @@ async function setup() {
     return {
       isConfigured: false,
       getCurrentUser: function () { return null; },
+      getInitialUser: function () { return Promise.resolve(null); },
       signInWithGoogle: async function () {
         throw new Error('CloudAuth: not configured, cannot sign in with Google.');
       },
@@ -156,18 +165,36 @@ async function setup() {
       const auth = getAuth(app);
       const provider = new GoogleAuthProvider();
 
-      // Explicitly pin persistent auth storage. Safari's Intelligent Tracking
-      // Prevention is aggressive about clearing storage, and the default can
-      // fail to keep the session across a redirect round-trip. Prefer
-      // IndexedDB (survives more ITP scenarios), then plain localStorage.
-      try {
-        await setPersistence(auth, indexedDBLocalPersistence);
-      } catch (e1) {
+      // Any Safari/WebKit build (desktop OR iOS). Used for both the redirect
+      // decision and the persistence ordering below.
+      function isSafariLike() {
+        const ua = navigator.userAgent || '';
+        return /Safari/.test(ua) && !/Chrome|Chromium|CriOS|FxiOS|Edg|OPR|Android/.test(ua);
+      }
+
+      // Explicitly pin persistent auth storage so the session survives reloads
+      // and the redirect round-trip. On Safari, IndexedDB is unreliable under
+      // Intelligent Tracking Prevention (setPersistence can resolve but the
+      // store gets partitioned/evicted, so the session silently vanishes) —
+      // so there we try plain localStorage FIRST, which is first-party on the
+      // app origin and sticks. Elsewhere IndexedDB first is fine. We
+      // deliberately never fall back to in-memory (that wouldn't survive a
+      // refresh, which is the whole point).
+      const persistenceOrder = isSafariLike()
+        ? [browserLocalPersistence, indexedDBLocalPersistence]
+        : [indexedDBLocalPersistence, browserLocalPersistence];
+      let persisted = false;
+      for (let i = 0; i < persistenceOrder.length; i++) {
         try {
-          await setPersistence(auth, browserLocalPersistence);
-        } catch (e2) {
-          console.error('CloudAuth: could not set persistent auth storage.', e2);
+          await setPersistence(auth, persistenceOrder[i]);
+          persisted = true;
+          break;
+        } catch (e) {
+          console.error('CloudAuth: persistence option failed, trying next.', e);
         }
+      }
+      if (!persisted) {
+        console.error('CloudAuth: no persistent auth storage available; the session may not survive a reload.');
       }
 
       // Complete any sign-in that was started via a full-page redirect on a
@@ -181,9 +208,32 @@ async function setup() {
       try {
         await getRedirectResult(auth);
       } catch (err) {
+        // On Safari a partitioned-storage failure can reject here even though
+        // the sign-in itself is fine — so we log it but DO NOT treat it as
+        // fatal: the definitive answer is auth.currentUser / the first
+        // onAuthStateChanged below, which we still honor.
         redirectError = err;
-        console.error('CloudAuth: getRedirectResult failed.', err);
+        console.error('CloudAuth: getRedirectResult failed (continuing; will rely on currentUser).', err);
       }
+
+      // Definitive INITIAL auth state, resolved from the first
+      // onAuthStateChanged after getRedirectResult has run. app.js awaits this
+      // (see getInitialUser) so it can gate ALL auth UI until it knows the
+      // real answer — no flashing the sign-in button before the persisted
+      // session (or redirect result) has been restored. Falls back to
+      // currentUser if the callback is somehow late.
+      let _initialResolved = false;
+      let _resolveInitial;
+      const initialUserPromise = new Promise(function (res) { _resolveInitial = res; });
+      function _settleInitial(u) {
+        if (_initialResolved) return;
+        _initialResolved = true;
+        _resolveInitial(mapUser(u));
+      }
+      fbOnAuthStateChanged(auth, function (u) { _settleInitial(u); });
+      // Safety net: if the callback never fires, resolve from currentUser so
+      // app.js's gate can't hang.
+      setTimeout(function () { _settleInitial(auth.currentUser); }, 4000);
 
       // Popups are unreliable (blocked by the browser, or unsupported in some
       // embedded/webview environments). These two codes mean "the popup could
@@ -206,11 +256,10 @@ async function setup() {
       // touch devices to keep it on the popup path).
       function prefersRedirectFirst() {
         const ua = navigator.userAgent || '';
-        const isSafari = /Safari/.test(ua) && !/Chrome|Chromium|CriOS|FxiOS|Edg|OPR|Android/.test(ua);
         const isMacintosh = /Macintosh|Mac OS X/.test(ua);
         const isIOS = /iPhone|iPad|iPod/.test(ua);
         const isTouch = (navigator.maxTouchPoints || 0) > 1;
-        return isSafari && isMacintosh && !isIOS && !isTouch;
+        return isSafariLike() && isMacintosh && !isIOS && !isTouch;
       }
 
       cloudAuth = {
@@ -218,6 +267,11 @@ async function setup() {
         getCurrentUser: function () {
           return mapUser(auth.currentUser);
         },
+        // Promise of the DEFINITIVE initial user (or null), resolved after
+        // getRedirectResult + the first onAuthStateChanged. app.js awaits this
+        // to gate the auth UI so it never flashes the sign-in button before a
+        // persisted/redirect session is restored.
+        getInitialUser: function () { return initialUserPromise; },
         signInWithGoogle: async function () {
           // macOS Safari: go straight to redirect (popup is the broken path).
           if (prefersRedirectFirst()) {

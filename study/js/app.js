@@ -93,17 +93,38 @@
     // point. waitForCloudAuth() is a defensive fallback only (bounded, so a
     // fresh page load never hangs even if that ordering guarantee is ever
     // broken by a future change to the script tags).
-    await waitForCloudAuth();
+    // "Checking session" gate: show the loading overlay and keep BOTH auth
+    // forms hidden (see index.html — #auth-screen and both forms start hidden)
+    // until we know the real answer. This prevents the first-paint flash of
+    // the wrong form (e.g. the local "Who ainters?" username box briefly
+    // showing before Google, or the Google button flashing before a restored
+    // session enters the app).
+    showLoading();
+    try {
+      await waitForCloudAuth();
 
-    if (window.CloudAuth && window.CloudAuth.isConfigured) {
-      setupCloudAuthScreen();
-    } else {
-      // Cloud auth not configured (js/firebase-config.js is still the
-      // REPLACE_ME placeholder) — exactly today's local-only flow.
-      currentUsername = await getUsername();
-      if (currentUsername) {
-        await enterApp();
+      if (window.CloudAuth && window.CloudAuth.isConfigured) {
+        await setupCloudAuthScreen();
+      } else {
+        // Cloud auth not configured (js/firebase-config.js is still the
+        // REPLACE_ME placeholder) — exactly today's local-only flow.
+        currentUsername = await getUsername();
+        if (currentUsername) {
+          await enterApp();
+        } else {
+          els.authCloudForm.hidden = true;
+          els.authLocalForm.hidden = false;
+          els.authScreen.hidden = false;
+        }
       }
+    } catch (err) {
+      console.error('init failed; showing an auth screen as a fallback.', err);
+      const configured = window.CloudAuth && window.CloudAuth.isConfigured;
+      els.authLocalForm.hidden = configured;
+      els.authCloudForm.hidden = !configured;
+      els.authScreen.hidden = false;
+    } finally {
+      hideLoading();
     }
   }
 
@@ -414,10 +435,13 @@
     }
   }
 
-  function setupCloudAuthScreen() {
-    els.authLocalForm.hidden = true;
-    els.authCloudForm.hidden = false;
+  // Marks that the one-time initial-session check has finished. Until it has,
+  // the onAuthStateChanged listener must not reveal the auth screen (the init
+  // gate owns that decision), so a transient null before the redirect/persisted
+  // session resolves can never flash the sign-in button.
+  let _initialAuthSettled = false;
 
+  async function setupCloudAuthScreen() {
     els.googleSigninBtn.addEventListener('click', async function () {
       els.googleSigninBtn.disabled = true;
       clearAuthError();
@@ -437,14 +461,40 @@
       }
     });
 
-    // Fires once immediately with the current signed-in state (Firebase
-    // persists sessions across reloads by default — this is the cloud
-    // equivalent of init()'s local getUsername() auto-resume), then again on
-    // every future sign-in/sign-out.
+    // DEFINITIVE initial state: auth.js has already awaited getRedirectResult
+    // and getInitialUser resolves from the first onAuthStateChanged (bounded,
+    // with a currentUser fallback so it can't hang). We block the auth UI on
+    // this so Safari never flashes the sign-in button before a restored or
+    // just-redirected session enters the app.
+    let initialUser = null;
+    try {
+      initialUser = await CloudAuth.getInitialUser();
+    } catch (e) {
+      console.error('CloudAuth.getInitialUser failed; falling back to currentUser.', e);
+      initialUser = (CloudAuth.getCurrentUser && CloudAuth.getCurrentUser()) || null;
+    }
+    _initialAuthSettled = true;
+
+    if (initialUser) {
+      await enterAppForUser(initialUser);
+    } else {
+      // Genuinely signed out — NOW reveal the Google form (never before).
+      els.authLocalForm.hidden = true;
+      els.authCloudForm.hidden = false;
+      els.authScreen.hidden = false;
+      const redirectErr = window.CloudAuth.getRedirectError && window.CloudAuth.getRedirectError();
+      if (redirectErr) showAuthError(describeAuthError(redirectErr));
+    }
+
+    // Ongoing subscription for future sign-in/sign-out. Its immediate re-fire
+    // with the current state is harmless: a present user just refreshes the
+    // greeting (enterAppForUser no-ops when already in), and a null before the
+    // initial check settles is ignored.
     CloudAuth.onAuthStateChanged(async function (user) {
       if (user) {
         await enterAppForUser(user);
       } else {
+        if (!_initialAuthSettled) return;
         // A spurious null while a user is actually present (can happen mid
         // token refresh) must NOT bounce us to the auth screen.
         if (window.CloudAuth.getCurrentUser && window.CloudAuth.getCurrentUser()) return;
@@ -457,23 +507,15 @@
         showAuthScreen();
       }
     });
-
-    // A redirect-based sign-in (the macOS Safari path) completes inside
-    // auth.js at module setup — before this runs — so by now getCurrentUser()
-    // already reflects it. Enter the app straight away rather than flashing
-    // the "Who ainters?" screen and relying on the listener. If the redirect
-    // instead came back with an error, surface it.
-    const existing = window.CloudAuth.getCurrentUser && window.CloudAuth.getCurrentUser();
-    if (existing) {
-      enterAppForUser(existing);
-      return;
-    }
-    const redirectErr = window.CloudAuth.getRedirectError && window.CloudAuth.getRedirectError();
-    if (redirectErr) showAuthError(describeAuthError(redirectErr));
   }
 
   function showAuthScreen() {
     els.app.hidden = true;
+    // Show the form that matches the current mode so a sign-out (or a failed
+    // entry) never reveals the wrong one.
+    const configured = window.CloudAuth && window.CloudAuth.isConfigured;
+    els.authLocalForm.hidden = configured;
+    els.authCloudForm.hidden = !configured;
     els.authScreen.hidden = false;
   }
 
