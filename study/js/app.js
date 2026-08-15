@@ -189,6 +189,7 @@
     els.settingsSignoutSection = document.getElementById('settings-signout-section');
     els.settingsSignoutBtn = document.getElementById('settings-signout-btn');
     els.settingsCloseBtn = document.getElementById('settings-close-btn');
+    els.settingsThemeRow = document.getElementById('settings-theme-row');
 
     // ---- Naists tab ----
     els.naistsBreadcrumb = document.getElementById('naists-breadcrumb');
@@ -243,11 +244,9 @@
     els.addFront = document.getElementById('add-front');
     els.addBack = document.getElementById('add-back');
     els.addFrontImageInput = document.getElementById('add-front-image');
-    els.addFrontImageBtn = document.getElementById('add-front-image-btn');
     els.addFrontImagePreview = document.getElementById('add-front-image-preview');
     els.addFrontImageRemove = document.getElementById('add-front-image-remove');
     els.addBackImageInput = document.getElementById('add-back-image');
-    els.addBackImageBtn = document.getElementById('add-back-image-btn');
     els.addBackImagePreview = document.getElementById('add-back-image-preview');
     els.addBackImageRemove = document.getElementById('add-back-image-remove');
     els.addCardBtn = document.getElementById('add-card-btn');
@@ -560,7 +559,8 @@
   // Preset ids match the :root[data-bg]/[data-accent] token blocks in
   // styles.css. `swatch` is the preview color in Settings; `swatchImage`
   // (optional) shows a photo instead. Actual theming is done by the CSS
-  // token blocks (so light/dark pairs keep following prefers-color-scheme).
+  // token blocks (so light/dark pairs keep following the chosen appearance:
+  // System uses prefers-color-scheme; Light/Dark set data-theme and override).
 
   const BACKGROUND_PRESETS = [
     { id: 'paper', name: 'Paper', swatch: '#faf6f7' },
@@ -578,12 +578,21 @@
     { id: 'grape', name: 'Grape', swatch: '#8b46c8' }
   ];
 
-  // Applies the chosen background + accent to <html>/<body>. Preset tokens are
-  // driven by data-attributes (CSS does the light/dark work); a custom
-  // uploaded image is applied as an inline, cover-fit (never stretched)
-  // background so its aspect ratio is preserved.
+  // Applies the chosen background + accent + light/dark appearance to
+  // <html>/<body>. Preset tokens are driven by data-attributes (CSS does the
+  // light/dark work via prefers-color-scheme, or via data-theme when the user
+  // pinned Light/Dark in Settings); a custom uploaded image is applied as an
+  // inline, cover-fit (never stretched) background so its aspect ratio is
+  // preserved.
   function applyAppearance(settings) {
     const s = settings || {};
+    const theme = (s.theme === 'light' || s.theme === 'dark') ? s.theme : 'system';
+    if (theme === 'light' || theme === 'dark') {
+      document.documentElement.setAttribute('data-theme', theme);
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+
     const accent = s.accentPreset || 'raspberry';
     document.documentElement.dataset.accent = accent;
 
@@ -722,6 +731,18 @@
       applyAppearance(s);
       await renderSettings();
     });
+
+    els.settingsThemeRow.addEventListener('click', async function (e) {
+      const btn = e.target.closest('[data-theme-choice]');
+      if (!btn) return;
+      const choice = btn.getAttribute('data-theme-choice');
+      if (choice !== 'light' && choice !== 'dark' && choice !== 'system') return;
+      const s = await getSettings();
+      s.theme = choice;
+      await saveSettings(s);
+      applyAppearance(s);
+      await renderSettings();
+    });
   }
 
   async function openSettings() {
@@ -740,6 +761,13 @@
 
     // Sign out only makes sense (and is only wired) with cloud auth on.
     els.settingsSignoutSection.hidden = !(window.CloudAuth && window.CloudAuth.isConfigured);
+
+    const theme = (settings.theme === 'light' || settings.theme === 'dark') ? settings.theme : 'system';
+    Array.prototype.forEach.call(els.settingsThemeRow.querySelectorAll('[data-theme-choice]'), function (btn) {
+      const on = btn.getAttribute('data-theme-choice') === theme;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
 
     _renderSwatches(els.settingsAccentSwatches, ACCENT_PRESETS, settings.accentPreset || 'raspberry', async function (id) {
       const s = await getSettings();
@@ -2031,31 +2059,127 @@
 
   // ---------------- Edit Daeck tab ----------------
 
-  // Wires a "+ Image" button + hidden file input + preview + "Remove image"
-  // button into a single reusable control. `onChange(dataUriOrNull)` is
-  // called whenever the attached image changes.
-  function bindImageAttach(inputEl, btnEl, previewEl, removeEl, onChange) {
-    btnEl.addEventListener('click', function () { inputEl.click(); });
-    inputEl.addEventListener('change', async function () {
-      const file = inputEl.files[0];
-      inputEl.value = '';
+  function _dtHasFiles(dt) {
+    if (!dt || !dt.types) return false;
+    return Array.prototype.indexOf.call(dt.types, 'Files') !== -1;
+  }
+
+  function _imageFileFromFiles(files) {
+    if (!files || !files.length) return null;
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i];
+      if (f && ((f.type || '').indexOf('image/') === 0 || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.name || ''))) {
+        return f;
+      }
+    }
+    return null;
+  }
+
+  function _imageFileFromClipboard(clipboardData) {
+    if (!clipboardData) return null;
+    var fromFiles = _imageFileFromFiles(clipboardData.files);
+    if (fromFiles) return fromFiles;
+    var items = clipboardData.items;
+    if (!items) return null;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].kind === 'file' && (items[i].type || '').indexOf('image/') === 0) {
+        return items[i].getAsFile();
+      }
+    }
+    return null;
+  }
+
+  function _setAttachedPreview(previewEl, removeEl, dataUri) {
+    var wrap = previewEl.parentElement;
+    if (dataUri) {
+      previewEl.src = dataUri;
+      previewEl.hidden = false;
+      removeEl.hidden = false;
+      if (wrap) wrap.hidden = false;
+    } else {
+      previewEl.hidden = true;
+      previewEl.removeAttribute('src');
+      removeEl.hidden = true;
+      if (wrap && wrap.classList.contains('image-attach')) wrap.hidden = true;
+    }
+  }
+
+  // Drop / paste / click-preview on a Front or Baeck field. `dropEl` is the
+  // textarea; the hidden file input is still used so clicking the preview
+  // can replace the image. `onChange(dataUriOrNull)` fires on attach/remove.
+  function bindImageAttach(dropEl, inputEl, previewEl, removeEl, onChange) {
+    function hoverTarget() {
+      return (dropEl.parentElement && dropEl.parentElement.classList.contains('field-with-image'))
+        ? dropEl.parentElement
+        : dropEl;
+    }
+
+    function setOver(on) {
+      hoverTarget().classList.toggle('image-drop-over', on);
+      dropEl.classList.toggle('image-drop-over', on);
+    }
+
+    function attachFile(file) {
       if (!file) return;
-      await withLoading(async function () {
+      withLoading(async function () {
         try {
-          const dataUri = await fileToCompressedDataUri(file);
-          previewEl.src = dataUri;
-          previewEl.hidden = false;
-          removeEl.hidden = false;
+          var dataUri = await fileToCompressedDataUri(file);
+          _setAttachedPreview(previewEl, removeEl, dataUri);
           onChange(dataUri);
         } catch (e) {
           // non-fatal — just skip attaching an image
         }
       });
+    }
+
+    function onDragOver(e) {
+      if (!_dtHasFiles(e.dataTransfer)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      setOver(true);
+    }
+
+    function onDrop(e) {
+      var file = _imageFileFromFiles(e.dataTransfer && e.dataTransfer.files);
+      setOver(false);
+      if (!file) return;
+      e.preventDefault();
+      e.stopPropagation();
+      attachFile(file);
+    }
+
+    var dropTargets = [dropEl];
+    var fieldWrap = dropEl.parentElement;
+    if (fieldWrap && fieldWrap.classList.contains('field-with-image')) dropTargets.push(fieldWrap);
+    if (previewEl.parentElement && dropTargets.indexOf(previewEl.parentElement) === -1) {
+      dropTargets.push(previewEl.parentElement);
+    }
+
+    dropTargets.forEach(function (target) {
+      target.addEventListener('dragover', onDragOver);
+      target.addEventListener('dragleave', function (e) {
+        if (target.contains(e.relatedTarget)) return;
+        setOver(false);
+      });
+      target.addEventListener('drop', onDrop);
     });
+
+    dropEl.addEventListener('paste', function (e) {
+      var file = _imageFileFromClipboard(e.clipboardData);
+      if (!file) return;
+      e.preventDefault();
+      attachFile(file);
+    });
+
+    inputEl.addEventListener('change', function () {
+      var file = inputEl.files[0];
+      inputEl.value = '';
+      if (file) attachFile(file);
+    });
+    previewEl.addEventListener('click', function () { inputEl.click(); });
+    previewEl.title = 'Replace image';
     removeEl.addEventListener('click', function () {
-      previewEl.hidden = true;
-      previewEl.removeAttribute('src');
-      removeEl.hidden = true;
+      _setAttachedPreview(previewEl, removeEl, null);
       onChange(null);
     });
   }
@@ -2067,9 +2191,7 @@
       [els.addFrontImagePreview, els.addFrontImageRemove],
       [els.addBackImagePreview, els.addBackImageRemove]
     ].forEach(function (pair) {
-      pair[0].hidden = true;
-      pair[0].removeAttribute('src');
-      pair[1].hidden = true;
+      _setAttachedPreview(pair[0], pair[1], null);
     });
   }
 
@@ -2111,10 +2233,10 @@
         if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submitNewCard();
       });
     });
-    bindImageAttach(els.addFrontImageInput, els.addFrontImageBtn, els.addFrontImagePreview, els.addFrontImageRemove, function (dataUri) {
+    bindImageAttach(els.addFront, els.addFrontImageInput, els.addFrontImagePreview, els.addFrontImageRemove, function (dataUri) {
       addFrontImageDataUri = dataUri;
     });
-    bindImageAttach(els.addBackImageInput, els.addBackImageBtn, els.addBackImagePreview, els.addBackImageRemove, function (dataUri) {
+    bindImageAttach(els.addBack, els.addBackImageInput, els.addBackImagePreview, els.addBackImageRemove, function (dataUri) {
       addBackImageDataUri = dataUri;
     });
   }
@@ -2313,68 +2435,33 @@
     return row;
   }
 
-  // A small "current image (if any) + Replace + Remove" widget used inline
-  // in edit mode. `getValue()`/onChange track the pending image for this
-  // field without touching the card until Save is clicked.
-  function _buildEditImageControl(currentImage, onChange) {
-    let value = currentImage || null;
-
+  // Preview + remove-image row used in inline card edit. Drop/paste live on
+  // the matching textarea (`dropEl`); clicking the preview replaces the file.
+  function _buildEditImageControl(currentImage, onChange, dropEl) {
     const wrap = document.createElement('div');
     wrap.className = 'image-attach';
+    wrap.hidden = !currentImage;
 
     const preview = document.createElement('img');
     preview.className = 'image-preview';
     preview.alt = '';
-    preview.hidden = !value;
-    if (value) preview.src = value;
+    if (currentImage) preview.src = currentImage;
 
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
     input.hidden = true;
 
-    const pickBtn = document.createElement('button');
-    pickBtn.type = 'button';
-    pickBtn.className = 'secondary-btn';
-    pickBtn.textContent = value ? 'Replace image' : '+ Image';
-
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.className = 'secondary-btn';
     removeBtn.textContent = 'Remove image';
-    removeBtn.hidden = !value;
-
-    pickBtn.addEventListener('click', function () { input.click(); });
-    input.addEventListener('change', async function () {
-      const file = input.files[0];
-      input.value = '';
-      if (!file) return;
-      await withLoading(async function () {
-        try {
-          value = await fileToCompressedDataUri(file);
-          preview.src = value;
-          preview.hidden = false;
-          removeBtn.hidden = false;
-          pickBtn.textContent = 'Replace image';
-          onChange(value);
-        } catch (e) {
-          // non-fatal — leave the previous image (if any) as-is
-        }
-      });
-    });
-    removeBtn.addEventListener('click', function () {
-      value = null;
-      preview.hidden = true;
-      preview.removeAttribute('src');
-      removeBtn.hidden = true;
-      pickBtn.textContent = '+ Image';
-      onChange(null);
-    });
 
     wrap.appendChild(input);
-    wrap.appendChild(pickBtn);
     wrap.appendChild(preview);
     wrap.appendChild(removeBtn);
+
+    bindImageAttach(dropEl, input, preview, removeBtn, onChange);
     return wrap;
   }
 
@@ -2387,11 +2474,15 @@
 
     const frontTa = document.createElement('textarea');
     frontTa.value = card.front;
-    const frontImageCtl = _buildEditImageControl(frontImage, function (v) { frontImage = v; });
+    frontTa.placeholder = 'Front';
+    frontTa.title = 'Drop or paste an image';
+    const frontImageCtl = _buildEditImageControl(frontImage, function (v) { frontImage = v; }, frontTa);
 
     const backTa = document.createElement('textarea');
     backTa.value = card.back;
-    const backImageCtl = _buildEditImageControl(backImage, function (v) { backImage = v; });
+    backTa.placeholder = 'Baeck';
+    backTa.title = 'Drop or paste an image';
+    const backImageCtl = _buildEditImageControl(backImage, function (v) { backImage = v; }, backTa);
 
     const actions = document.createElement('div');
     actions.className = 'card-row-actions';
