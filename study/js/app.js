@@ -558,16 +558,16 @@
 
   // ---------------- appearance (background + foreground themes) ----------------
   // Preset ids match the :root[data-bg]/[data-accent] token blocks in
-  // styles.css. `swatch` is only the preview color shown in Settings — the
-  // actual theming is done entirely by the CSS token blocks (so light/dark
-  // pairs keep following prefers-color-scheme).
+  // styles.css. `swatch` is the preview color in Settings; `swatchImage`
+  // (optional) shows a photo instead. Actual theming is done by the CSS
+  // token blocks (so light/dark pairs keep following prefers-color-scheme).
 
   const BACKGROUND_PRESETS = [
     { id: 'paper', name: 'Paper', swatch: '#faf6f7' },
     { id: 'slate', name: 'Slate', swatch: '#e6ebf0' },
     { id: 'dusk', name: 'Dusk', swatch: '#ece5f6' },
     { id: 'pig', name: 'Pig', swatch: '#fbe0ee' },
-    { id: 'grass', name: 'Grass', swatch: '#bfe08e' }
+    { id: 'grass', name: 'Grass', swatch: '#bfe08e', swatchImage: 'resources/grass.jpg' }
   ];
 
   const ACCENT_PRESETS = [
@@ -770,7 +770,15 @@
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'swatch' + (preset.id === activeId ? ' active' : '');
-      btn.style.background = preset.swatch;
+      if (preset.swatchImage) {
+        btn.style.backgroundColor = preset.swatch;
+        btn.style.backgroundImage = 'url("' + preset.swatchImage + '")';
+        btn.style.backgroundSize = 'cover';
+        btn.style.backgroundPosition = 'center';
+        btn.style.backgroundRepeat = 'no-repeat';
+      } else {
+        btn.style.background = preset.swatch;
+      }
       btn.title = preset.name;
       btn.setAttribute('aria-label', preset.name);
       const label = document.createElement('span');
@@ -1029,7 +1037,7 @@
 
     els.newDeckBtn.addEventListener('click', openNewDeckOverlay);
 
-    // "Import daeck" — one-click Anki import that spins up a brand-new deck
+    // "+ Import daeck" — one-click Anki import that spins up a brand-new deck
     // named after the file, dropped into whatever naist level is being
     // browsed, then jumps straight into editing it.
     els.importDeckBtn.addEventListener('click', function () { els.importDeckInput.click(); });
@@ -1390,6 +1398,9 @@
 
     row.appendChild(buildDragHandle('naist', naist.id, naist.name));
 
+    const body = document.createElement('div');
+    body.className = 'browse-row-body';
+
     const expanded = expandedNaistIds.has(naist.id);
     const chevron = document.createElement('button');
     chevron.type = 'button';
@@ -1403,7 +1414,7 @@
       else expandedNaistIds.add(naist.id);
       renderNaistsBrowser();
     });
-    row.appendChild(chevron);
+    body.appendChild(chevron);
 
     const mainBtn = document.createElement('button');
     mainBtn.type = 'button';
@@ -1459,8 +1470,9 @@
 
     actions.appendChild(renameBtn);
     actions.appendChild(deleteBtn);
-    row.appendChild(mainBtn);
-    row.appendChild(actions);
+    body.appendChild(mainBtn);
+    body.appendChild(actions);
+    row.appendChild(body);
 
     return row;
   }
@@ -1478,10 +1490,12 @@
     if (depth) _applyRowIndent(row, depth);
 
     row.appendChild(buildDragHandle('deck', deck.id, deck.name));
+    const body = document.createElement('div');
+    body.className = 'browse-row-body';
     const spacer = document.createElement('span');
     spacer.className = 'naist-chevron-spacer';
     spacer.setAttribute('aria-hidden', 'true');
-    row.appendChild(spacer);
+    body.appendChild(spacer);
 
     const info = document.createElement('div');
     info.className = 'browse-row-info';
@@ -1566,9 +1580,10 @@
       actions.appendChild(deleteBtn);
     }
 
-    row.appendChild(info);
-    row.appendChild(primary);
-    row.appendChild(actions);
+    body.appendChild(info);
+    body.appendChild(primary);
+    body.appendChild(actions);
+    row.appendChild(body);
 
     return row;
   }

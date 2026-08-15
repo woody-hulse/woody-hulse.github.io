@@ -811,9 +811,10 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* Shared row shell for both naist rows and deck rows: a bordered card with
-   a clickable/informational main area plus one or two clusters of compact
-   secondary-button actions. Rows wrap onto multiple lines on narrow widths
-   rather than ever forcing horizontal scroll. */
+   a left-edge drag handle and a wrapping body (title + actions). The handle
+   stays a narrow, vertically centered column — it never wraps onto its own
+   line or adds row height. The body wraps on narrow widths rather than
+   forcing horizontal scroll. */
 .browse-row {
   width: 100%;
   background: var(--surface);
@@ -822,9 +823,10 @@ input:focus, textarea:focus, select:focus {
   padding: 5px 10px;
   box-shadow: var(--shadow-sm);
   display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -833,10 +835,15 @@ input:focus, textarea:focus, select:focus {
   box-shadow: var(--shadow-md);
 }
 
-/* Naist and deck rows share identical shell padding so the drag handle,
-   chevron slot, and title column line up pixel-for-pixel between the two. */
-.browse-row-naist {
-  padding: 5px 10px;
+/* Title + actions may wrap; the handle stays in its left column. */
+.browse-row-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 /* The clickable/navigable part of a row (naist: navigate in; deck: just
@@ -930,22 +937,18 @@ input:focus, textarea:focus, select:focus {
 
 /* ---- drag-and-drop + inline expand affordances ---- */
 
-/* Grip handle: the always-there "this row is draggable" affordance. The
-   whole row is draggable, but the handle is the unambiguous grab point
-   (and the only one that works over a naist row's <button> main area). */
-/* Grip handle: the always-there "this row is draggable" affordance and the
-   grab point for the pointer-based drag (mouse + touch). touch-action:none
-   stops the browser from scrolling/zooming when a drag starts on the handle,
-   which is what lets touch drags work on iOS/Android. Sized as a comfortable
-   tap target while keeping the row compact. */
+/* Grip handle: a narrow left-edge column, vertically centered on the row.
+   The whole row is draggable, but the handle is the unambiguous grab point
+   (and the only one that works over a naist row's <button> main area).
+   touch-action:none stops the browser from scrolling/zooming when a drag
+   starts on the handle, which is what lets touch drags work on iOS/Android. */
 .drag-handle {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  min-height: 32px;
-  align-self: stretch;
+  width: 22px;
+  align-self: center;
   color: var(--ink-faint);
   cursor: grab;
   opacity: 0.7;
@@ -2010,10 +2013,6 @@ select:focus,
     gap: 6px;
   }
 
-  .browse-row-deck .browse-row-info {
-    flex-basis: 100%;
-  }
-
   #edit-deck-header {
     flex-direction: column;
     align-items: flex-start;
@@ -2292,14 +2291,14 @@ select:focus,
 :root[data-accent="tangerine"] { --accent: #e07d2a; --accent-dark: #bd6416; --accent-light: #fce6d2; --accent-tint: #fef5ec; }
 :root[data-accent="grape"]     { --accent: #8b46c8; --accent-dark: #6f34a3; --accent-light: #eaddf7; --accent-tint: #f6effc; }
 
-/* Grass texture: a tileable SVG repeated at its natural size (never scaled to
-   fill, so blades keep their aspect ratio). Base color still comes from --bg
-   so the tint shows between blades and behind translucent UI. */
+/* Grass: a photographic field (perspective, not a tile). Cover-fit so the
+   photo is never stretched; --bg is the fallback color behind it. */
 :root[data-bg="grass"] body {
   background-color: var(--bg);
-  background-image: url("resources/grass-tile.svg");
-  background-repeat: repeat;
-  background-size: 48px 48px;
+  background-image: url("resources/grass.jpg");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -2314,7 +2313,9 @@ select:focus,
   :root[data-accent="grape"]     { --accent: #b57ce0; --accent-dark: #c79aec; --accent-light: #2e1c40; --accent-tint: #22142f; }
 
   :root[data-bg="grass"] body {
-    background-image: url("resources/grass-tile-dark.svg");
+    background-image:
+      linear-gradient(rgba(18, 24, 14, 0.42), rgba(18, 24, 14, 0.42)),
+      url("resources/grass.jpg");
   }
 }
 

@@ -81,6 +81,35 @@ time you sign in, any decks/cards you already had locally in that browser are
 automatically migrated up to your account (only if your cloud store is empty —
 it never clobbers existing cloud data).
 
+## Sign-in flow / macOS Safari note (for maintainers)
+
+Google sign-in uses **popup-first on every browser** (`signInWithPopup` with
+an explicit `browserPopupRedirectResolver`), and the app enters directly from
+the popup's returned credential rather than waiting on `onAuthStateChanged` in
+the opener. A full-page redirect is used **only** if the popup can't open at
+all (`auth/popup-blocked` / `auth/operation-not-supported-in-this-environment`).
+
+Why not redirect-first on macOS Safari? Because `authDomain`
+(`stody-39e62.firebaseapp.com`) is a different site from the app origin
+(`woodyhulse.com`). `signInWithRedirect` stores state on `firebaseapp.com` and
+returns to `woodyhulse.com`; desktop Safari's ITP drops that cross-site state,
+so the redirect round-trip silently fails to complete. The popup completes the
+whole exchange in a first-party window and hands the credential straight back,
+which is the path that works on **both** iOS and macOS Safari. (An earlier
+"redirect-first for macOS Safari" heuristic was removed for this reason — do
+not reintroduce it.)
+
+The **real** same-site fix (optional, only if popups are ever undesirable) is
+to serve the auth handler from the app's own domain: add `woodyhulse.com` as a
+Firebase Hosting custom domain and set `authDomain: "woodyhulse.com"` in
+`firebase-config.js`, so there's no cross-site hop at all. Not required with
+the popup-first approach.
+
+Authorized domains (Firebase Auth → Settings) and the Google OAuth web client's
+Authorized JavaScript origins are a **separate** concern from the code; if
+sign-in works in any one browser on a given origin, those are already correct
+for that origin (they're not browser-specific).
+
 ## Data model (how it's stored)
 
 Everything lives under a single per-user subtree:

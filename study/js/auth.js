@@ -157,6 +157,7 @@ async function setup() {
         setPersistence,
         indexedDBLocalPersistence,
         browserLocalPersistence,
+        browserPopupRedirectResolver,
         signOut,
         onAuthStateChanged: fbOnAuthStateChanged
       } = authMod;
@@ -206,7 +207,7 @@ async function setup() {
       // captured so the UI can surface it (getRedirectError).
       let redirectError = null;
       try {
-        await getRedirectResult(auth);
+        await getRedirectResult(auth, browserPopupRedirectResolver);
       } catch (err) {
         // On Safari a partitioned-storage failure can reject here even though
         // the sign-in itself is fine — so we log it but DO NOT treat it as
@@ -235,31 +236,17 @@ async function setup() {
       // app.js's gate can't hang.
       setTimeout(function () { _settleInitial(auth.currentUser); }, 4000);
 
-      // Popups are unreliable (blocked by the browser, or unsupported in some
-      // embedded/webview environments). These two codes mean "the popup could
-      // not even open" — the only cases where silently switching to a
-      // full-page redirect is the right call. Other popup errors (user closed
-      // it, cancelled, etc.) are intentional and must NOT trigger a redirect.
+      // Only these two codes mean "the popup could not even open" — the ONLY
+      // cases where silently switching to a full-page redirect is the right
+      // call. Every other popup error (user closed it, cancelled, timed out,
+      // etc.) is surfaced to the UI instead — we do NOT auto-redirect, because
+      // the redirect flow is itself unreliable on desktop Safari (the
+      // cross-site firebaseapp.com hop is dropped under ITP). Popup is the
+      // path that actually works on both iOS AND macOS Safari.
       function isPopupUnavailable(err) {
         const code = err && err.code;
         return code === 'auth/popup-blocked' ||
                code === 'auth/operation-not-supported-in-this-environment';
-      }
-
-      // Desktop Safari on macOS is the known-broken case: under ITP the
-      // sign-in popup can finish Google's own UI, but the OPENER window never
-      // receives the credential — onAuthStateChanged never fires and the user
-      // is left on the sign-in screen. For that environment we must use a
-      // full-page redirect FIRST, not as a fallback. iOS Safari completes the
-      // popup fine, so we deliberately don't force redirect there (an iPad in
-      // desktop mode reports "Macintosh" but is a touch device, so we exclude
-      // touch devices to keep it on the popup path).
-      function prefersRedirectFirst() {
-        const ua = navigator.userAgent || '';
-        const isMacintosh = /Macintosh|Mac OS X/.test(ua);
-        const isIOS = /iPhone|iPad|iPod/.test(ua);
-        const isTouch = (navigator.maxTouchPoints || 0) > 1;
-        return isSafariLike() && isMacintosh && !isIOS && !isTouch;
       }
 
       cloudAuth = {
@@ -272,21 +259,26 @@ async function setup() {
         // to gate the auth UI so it never flashes the sign-in button before a
         // persisted/redirect session is restored.
         getInitialUser: function () { return initialUserPromise; },
+        // POPUP-FIRST on every browser, including macOS Safari. The popup
+        // completes the whole sign-in inside a first-party window and hands the
+        // credential straight back to this promise — app.js enters the app
+        // from that return value (it does NOT depend on onAuthStateChanged
+        // firing in the opener, which is the part desktop Safari can drop).
+        // This is the same path iOS Safari already uses successfully. A
+        // full-page redirect is used ONLY if the popup can't open at all
+        // (blocked/unsupported). Passing browserPopupRedirectResolver
+        // explicitly guarantees the popup resolver is used regardless of how
+        // the SDK auto-registers it.
         signInWithGoogle: async function () {
-          // macOS Safari: go straight to redirect (popup is the broken path).
-          if (prefersRedirectFirst()) {
-            await signInWithRedirect(auth, provider);
-            return null;
-          }
           try {
-            const result = await signInWithPopup(auth, provider);
+            const result = await signInWithPopup(auth, provider, browserPopupRedirectResolver);
             return mapUser(result.user);
           } catch (err) {
             if (isPopupUnavailable(err)) {
-              // Hand off to a full-page redirect. This navigates away, so the
-              // returned promise never resolves in-page; getRedirectResult()
-              // (above, on the next load) finishes the job.
-              await signInWithRedirect(auth, provider);
+              // Popup couldn't open — fall back to a full-page redirect. This
+              // navigates away, so the returned promise never resolves in-page;
+              // getRedirectResult() (above, on the next load) finishes the job.
+              await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
               return null;
             }
             throw err;
@@ -296,7 +288,7 @@ async function setup() {
         // popup attempt entirely. Navigates away; completion is handled by
         // getRedirectResult() on the subsequent load.
         signInWithGoogleRedirect: async function () {
-          await signInWithRedirect(auth, provider);
+          await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
         },
         // Snapshot of any error thrown while completing a pending redirect on
         // load (null if none). Same {code, message}-ish shape as Firebase.
