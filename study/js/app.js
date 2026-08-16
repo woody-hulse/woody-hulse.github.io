@@ -127,17 +127,17 @@
         if (currentUsername) {
           await enterApp();
         } else {
-          els.authCloudForm.hidden = true;
-          els.authLocalForm.hidden = false;
-          els.authScreen.hidden = false;
+          if (els.authCloudForm) els.authCloudForm.hidden = true;
+          if (els.authLocalForm) els.authLocalForm.hidden = false;
+          if (els.authScreen) els.authScreen.hidden = false;
         }
       }
     } catch (err) {
       console.error('init failed; showing an auth screen as a fallback.', err);
       const configured = window.CloudAuth && window.CloudAuth.isConfigured;
-      els.authLocalForm.hidden = configured;
-      els.authCloudForm.hidden = !configured;
-      els.authScreen.hidden = false;
+      if (els.authLocalForm) els.authLocalForm.hidden = configured;
+      if (els.authCloudForm) els.authCloudForm.hidden = !configured;
+      if (els.authScreen) els.authScreen.hidden = false;
     } finally {
       hideLoading();
     }
@@ -175,6 +175,8 @@
     els.bucksValue = document.getElementById('bucks-value');
     els.bucksDisplay = document.getElementById('bucks-display');
     els.bucksLabel = document.getElementById('bucks-label');
+    els.pigCountDisplay = document.getElementById('pig-count-display');
+    els.starCountDisplay = document.getElementById('star-count-display');
     els.tabBtns = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
     els.views = {
       naists: document.getElementById('view-naists'),
@@ -245,7 +247,7 @@
     els.cramModeBadge = document.getElementById('cram-mode-badge');
     els.undoRatingBtn = document.getElementById('undo-rating-btn');
     els.emptyState = document.getElementById('empty-state');
-    els.emptyStateText = els.emptyState.querySelector('p');
+    els.emptyStateText = els.emptyState ? els.emptyState.querySelector('p') : null;
     els.emptyBackBtn = document.getElementById('empty-back-btn');
     els.studyCard = document.getElementById('study-card');
     els.cardFront = document.getElementById('card-front');
@@ -308,11 +310,11 @@
   let _loadingDepth = 0;
   function showLoading() {
     _loadingDepth++;
-    els.loadingOverlay.hidden = false;
+    if (els.loadingOverlay) els.loadingOverlay.hidden = false;
   }
   function hideLoading() {
     _loadingDepth = Math.max(0, _loadingDepth - 1);
-    if (_loadingDepth === 0) els.loadingOverlay.hidden = true;
+    if (_loadingDepth === 0 && els.loadingOverlay) els.loadingOverlay.hidden = true;
   }
   async function withLoading(fn) {
     showLoading();
@@ -428,7 +430,7 @@
     if (!user) return;
     // Already inside the app: just keep the greeting fresh (e.g. a token
     // refresh re-firing onAuthStateChanged) and bail.
-    if (!els.app.hidden) {
+    if (els.app && !els.app.hidden) {
       refreshGreeting();
       return;
     }
@@ -444,7 +446,7 @@
         // and cloud-synced), NEVER the Google display name. May be null on a
         // first-ever sign-in — we prompt for it just below.
         currentUsername = await getUsername();
-        if (els.app.hidden) await enterApp();
+        if (!els.app || els.app.hidden) await enterApp();
       });
       // First sign-in (or any user without a saved nickname): ask for one via
       // the in-app "Your nameb:" popup. Non-blocking to sign-in — dismissing
@@ -536,18 +538,16 @@
   }
 
   function showAuthScreen() {
-    els.app.hidden = true;
-    // Show the form that matches the current mode so a sign-out (or a failed
-    // entry) never reveals the wrong one.
+    if (els.app) els.app.hidden = true;
     const configured = window.CloudAuth && window.CloudAuth.isConfigured;
-    els.authLocalForm.hidden = configured;
-    els.authCloudForm.hidden = !configured;
-    els.authScreen.hidden = false;
+    if (els.authLocalForm) els.authLocalForm.hidden = configured;
+    if (els.authCloudForm) els.authCloudForm.hidden = !configured;
+    if (els.authScreen) els.authScreen.hidden = false;
   }
 
   async function enterApp() {
-    els.authScreen.hidden = true;
-    els.app.hidden = false;
+    if (els.authScreen) els.authScreen.hidden = true;
+    if (els.app) els.app.hidden = false;
 
     economy = await getEconomy();
     const settings = await getSettings();
@@ -559,6 +559,7 @@
 
     refreshGreeting();
     updateBucksDisplay();
+    updatePigCountDisplay();
 
     bindTabs();
     bindLayoutMode();
@@ -596,7 +597,7 @@
 
   function refreshGreeting() {
     const name = currentUsername && currentUsername.trim() ? currentUsername.trim() : '';
-    els.userGreeting.textContent = name ? t('hi', { name: name }) : '';
+    if (els.userGreeting) els.userGreeting.textContent = name ? t('hi', { name: name }) : '';
   }
 
   function displayDeckName(deck) {
@@ -663,6 +664,21 @@
 
   function updateBucksDisplay() {
     if (els.bucksValue) els.bucksValue.textContent = formatCurrency(economy.bucks);
+  }
+
+  // Header pig/star badges were replaced by bucks. Keep these no-ops so a
+  // mixed HTML/JS deploy (or any leftover caller) cannot crash enterApp.
+  function updatePigCountDisplay() {
+    if (!els.pigCountDisplay) return;
+    const n = (economy && economy.animals && economy.animals.pigs) || 0;
+    els.pigCountDisplay.textContent = n + (n === 1 ? ' bigbert' : ' bigberts');
+  }
+
+  function updateStarCountDisplay() {
+    if (!els.starCountDisplay) return;
+    const count = (economy && economy.starCount) || 0;
+    els.starCountDisplay.hidden = count === 0;
+    if (count > 0) els.starCountDisplay.textContent = String(count);
   }
 
   function applyFocusMode(on) {
@@ -764,7 +780,7 @@
     applyI18n(document);
     refreshGreeting();
     updateBucksDisplay();
-    const active = els.tabBtns.find(function (b) { return b.classList.contains('active'); });
+    const active = (els.tabBtns || []).find(function (b) { return b.classList.contains('active'); });
     const tab = active ? active.dataset.tab : 'naists';
     if (tab === 'naists') await renderNaistsBrowser();
     if (tab === 'edit') await renderEditTab();
@@ -879,7 +895,7 @@
   var _textPromptResolve = null;
 
   function bindTextPrompt() {
-    if (els.textPromptOverlay.dataset.bound) return;
+    if (!els.textPromptOverlay || els.textPromptOverlay.dataset.bound) return;
     els.textPromptOverlay.dataset.bound = '1';
 
     els.textPromptConfirm.addEventListener('click', _resolveTextPrompt);
@@ -934,9 +950,9 @@
   // ---------------- settings overlay ----------------
 
   function bindSettingsOverlay() {
-    if (els.settingsOverlay.dataset.bound) return;
+    if (!els.settingsOverlay || els.settingsOverlay.dataset.bound) return;
     els.settingsOverlay.dataset.bound = '1';
-    els.settingsBtn.addEventListener('click', openSettings);
+    if (els.settingsBtn) els.settingsBtn.addEventListener('click', openSettings);
     if (els.focusBtn && !els.focusBtn.dataset.bound) {
       els.focusBtn.dataset.bound = '1';
       els.focusBtn.addEventListener('click', async function () {
@@ -945,46 +961,58 @@
         await renderSettings();
       });
     }
-    els.settingsCloseBtn.addEventListener('click', closeSettings);
+    if (els.settingsCloseBtn) els.settingsCloseBtn.addEventListener('click', closeSettings);
     els.settingsOverlay.addEventListener('mousedown', function (e) {
       if (e.target === els.settingsOverlay) closeSettings();
     });
 
-    els.settingsNicknameBtn.addEventListener('click', function () { promptForNickname(false); });
+    if (els.settingsNicknameBtn) {
+      els.settingsNicknameBtn.addEventListener('click', function () { promptForNickname(false); });
+    }
 
-    els.settingsSignoutBtn.addEventListener('click', async function () {
-      closeSettings();
-      await withLoading(async function () {
-        await CloudAuth.signOutUser();
-        // showAuthScreen() runs from the onAuthStateChanged(null) callback.
+    if (els.settingsSignoutBtn) {
+      els.settingsSignoutBtn.addEventListener('click', async function () {
+        closeSettings();
+        await withLoading(async function () {
+          await CloudAuth.signOutUser();
+          // showAuthScreen() runs from the onAuthStateChanged(null) callback.
+        });
       });
-    });
+    }
 
-    els.settingsBgImageBtn.addEventListener('click', function () { els.settingsBgImageInput.click(); });
-    els.settingsBgImageInput.addEventListener('change', onCustomBgImageChosen);
-    els.settingsBgImageClear.addEventListener('click', async function () {
-      const s = await getSettings();
-      s.backgroundPreset = 'paper';
-      s.backgroundImage = null;
-      await saveSettings(s);
-      applyAppearance(s);
-      await renderSettings();
-    });
+    if (els.settingsBgImageBtn && els.settingsBgImageInput) {
+      els.settingsBgImageBtn.addEventListener('click', function () { els.settingsBgImageInput.click(); });
+      els.settingsBgImageInput.addEventListener('change', onCustomBgImageChosen);
+    }
+    if (els.settingsBgImageClear) {
+      els.settingsBgImageClear.addEventListener('click', async function () {
+        const s = await getSettings();
+        s.backgroundPreset = 'paper';
+        s.backgroundImage = null;
+        await saveSettings(s);
+        applyAppearance(s);
+        await renderSettings();
+      });
+    }
 
-    els.settingsVocabToggle.addEventListener('click', async function () {
-      const s = await getSettings();
-      s.funSpellings = !s.funSpellings;
-      await saveSettings(s);
-      setFunSpellings(!!s.funSpellings);
-      await applyVocabAndRerender();
-      await renderSettings();
-    });
+    if (els.settingsVocabToggle) {
+      els.settingsVocabToggle.addEventListener('click', async function () {
+        const s = await getSettings();
+        s.funSpellings = !s.funSpellings;
+        await saveSettings(s);
+        setFunSpellings(!!s.funSpellings);
+        await applyVocabAndRerender();
+        await renderSettings();
+      });
+    }
 
-    els.settingsFocusToggle.addEventListener('click', async function () {
-      const s = await getSettings();
-      await setFocusMode(!s.focusMode);
-      await renderSettings();
-    });
+    if (els.settingsFocusToggle) {
+      els.settingsFocusToggle.addEventListener('click', async function () {
+        const s = await getSettings();
+        await setFocusMode(!s.focusMode);
+        await renderSettings();
+      });
+    }
 
     if (els.settingsEncouragementToggle) {
       els.settingsEncouragementToggle.addEventListener('click', async function () {
@@ -995,42 +1023,50 @@
       });
     }
 
-    els.settingsThemeRow.addEventListener('click', async function (e) {
-      const btn = e.target.closest('[data-theme-choice]');
-      if (!btn) return;
-      const choice = btn.getAttribute('data-theme-choice');
-      if (choice !== 'light' && choice !== 'dark' && choice !== 'system') return;
-      const s = await getSettings();
-      s.theme = choice;
-      await saveSettings(s);
-      applyAppearance(s);
-      await renderSettings();
-    });
+    if (els.settingsThemeRow) {
+      els.settingsThemeRow.addEventListener('click', async function (e) {
+        const btn = e.target.closest('[data-theme-choice]');
+        if (!btn) return;
+        const choice = btn.getAttribute('data-theme-choice');
+        if (choice !== 'light' && choice !== 'dark' && choice !== 'system') return;
+        const s = await getSettings();
+        s.theme = choice;
+        await saveSettings(s);
+        applyAppearance(s);
+        await renderSettings();
+      });
+    }
   }
 
   async function openSettings() {
     await renderSettings();
-    els.settingsOverlay.hidden = false;
+    if (els.settingsOverlay) els.settingsOverlay.hidden = false;
   }
 
   function closeSettings() {
-    els.settingsOverlay.hidden = true;
+    if (els.settingsOverlay) els.settingsOverlay.hidden = true;
   }
 
   async function renderSettings() {
     const settings = await getSettings();
 
-    els.settingsNicknameValue.textContent = currentUsername || t('friend');
+    if (els.settingsNicknameValue) {
+      els.settingsNicknameValue.textContent = currentUsername || t('friend');
+    }
 
     // Sign out only makes sense (and is only wired) with cloud auth on.
-    els.settingsSignoutSection.hidden = !(window.CloudAuth && window.CloudAuth.isConfigured);
+    if (els.settingsSignoutSection) {
+      els.settingsSignoutSection.hidden = !(window.CloudAuth && window.CloudAuth.isConfigured);
+    }
 
     const theme = (settings.theme === 'light' || settings.theme === 'dark') ? settings.theme : 'system';
-    Array.prototype.forEach.call(els.settingsThemeRow.querySelectorAll('[data-theme-choice]'), function (btn) {
-      const on = btn.getAttribute('data-theme-choice') === theme;
-      btn.classList.toggle('active', on);
-      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    });
+    if (els.settingsThemeRow) {
+      Array.prototype.forEach.call(els.settingsThemeRow.querySelectorAll('[data-theme-choice]'), function (btn) {
+        const on = btn.getAttribute('data-theme-choice') === theme;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
 
     _renderSwatches(els.settingsAccentSwatches, ACCENT_PRESETS, settings.accentPreset || 'raspberry', async function (id) {
       const s = await getSettings();
@@ -1054,9 +1090,11 @@
     });
 
     const hasCustom = settings.backgroundPreset === 'custom' && !!settings.backgroundImage;
-    els.settingsBgImageClear.hidden = !hasCustom;
-    els.settingsBgStatus.textContent = hasCustom ? t('customBgOn') : '';
-    els.settingsBgStatus.classList.remove('error');
+    if (els.settingsBgImageClear) els.settingsBgImageClear.hidden = !hasCustom;
+    if (els.settingsBgStatus) {
+      els.settingsBgStatus.textContent = hasCustom ? t('customBgOn') : '';
+      els.settingsBgStatus.classList.remove('error');
+    }
 
     _setToggle(els.settingsVocabToggle, !!settings.funSpellings);
     _setToggle(els.settingsFocusToggle, !!settings.focusMode);
@@ -1070,6 +1108,7 @@
   }
 
   function _renderSwatches(container, presets, activeId, onPick) {
+    if (!container) return;
     container.innerHTML = '';
     presets.forEach(function (preset) {
       const btn = document.createElement('button');
@@ -1100,8 +1139,10 @@
     const file = e.target.files[0];
     e.target.value = '';
     if (!file) return;
-    els.settingsBgStatus.classList.remove('error');
-    els.settingsBgStatus.textContent = t('processingImage');
+    if (els.settingsBgStatus) {
+      els.settingsBgStatus.classList.remove('error');
+      els.settingsBgStatus.textContent = t('processingImage');
+    }
     try {
       // Compress hard: page backgrounds don't need card-level fidelity, and a
       // big data URI can blow the localStorage/Firestore-doc quota.
@@ -1121,17 +1162,19 @@
       await renderSettings();
     } catch (err) {
       console.error('Custom background failed:', err);
-      els.settingsBgStatus.classList.add('error');
-      els.settingsBgStatus.textContent = t('customBgFail');
+      if (els.settingsBgStatus) {
+        els.settingsBgStatus.classList.add('error');
+        els.settingsBgStatus.textContent = t('customBgFail');
+      }
     }
   }
 
   // ---------------- tabs ----------------
 
   function bindTabs() {
-    if (els.app.dataset.tabsBound) return;
+    if (!els.app || els.app.dataset.tabsBound) return;
     els.app.dataset.tabsBound = '1';
-    els.tabBtns.forEach(function (btn) {
+    (els.tabBtns || []).forEach(function (btn) {
       btn.addEventListener('click', function () { switchTab(btn.dataset.tab); });
     });
   }
@@ -1144,7 +1187,7 @@
   function switchTab(tab, opts) {
     opts = opts || {};
     if (tab === 'farm' && !isCompactLayout()) tab = 'naists';
-    els.tabBtns.forEach(function (btn) {
+    (els.tabBtns || []).forEach(function (btn) {
       btn.classList.toggle('active', btn.dataset.tab === tab);
     });
     Object.keys(els.views).forEach(function (name) {
@@ -1344,44 +1387,48 @@
   // ---------------- Naists tab: browser ----------------
 
   function bindNaistsView() {
-    if (els.naistsSearch.dataset.bound) return;
+    if (!els.naistsSearch || els.naistsSearch.dataset.bound) return;
     els.naistsSearch.dataset.bound = '1';
     els.naistsSearch.addEventListener('input', function () { renderNaistsBrowser(); });
 
-    els.newNaistBtn.addEventListener('click', async function () {
-      const name = await openTextPrompt({
-        title: t('newNestTitle'),
-        placeholder: t('nestName'),
-        confirmText: t('create'),
-        requireNonEmpty: true
+    if (els.newNaistBtn) {
+      els.newNaistBtn.addEventListener('click', async function () {
+        const name = await openTextPrompt({
+          title: t('newNestTitle'),
+          placeholder: t('nestName'),
+          confirmText: t('create'),
+          requireNonEmpty: true
+        });
+        if (!name || !name.trim()) return;
+        await addNaist(name.trim(), browseNaistId);
+        await renderNaistsBrowser();
       });
-      if (!name || !name.trim()) return;
-      await addNaist(name.trim(), browseNaistId);
-      await renderNaistsBrowser();
-    });
+    }
 
-    els.newDeckBtn.addEventListener('click', openNewDeckOverlay);
+    if (els.newDeckBtn) els.newDeckBtn.addEventListener('click', openNewDeckOverlay);
 
     // "+ Import daeck" — one-click Anki import that spins up a brand-new deck
     // named after the file, dropped into whatever naist level is being
     // browsed, then jumps straight into editing it.
-    els.importDeckBtn.addEventListener('click', function () { els.importDeckInput.click(); });
-    els.importDeckInput.addEventListener('change', async function (e) {
-      const file = e.target.files[0];
-      e.target.value = '';
-      if (!file) return;
-      const baseName = file.name.replace(/\.[^.]+$/, '').trim() || t('importedDeck');
-      await withLoading(async function () {
-        try {
-          const deck = await addDeck(baseName, browseNaistId);
-          const parsed = await importAnkiFile(file);
-          await addCards(parsed, deck.id);
-          switchTab('edit', { deckId: deck.id });
-        } catch (err) {
-          alert(err && err.message ? err.message : t('importFailed'));
-        }
+    if (els.importDeckBtn && els.importDeckInput) {
+      els.importDeckBtn.addEventListener('click', function () { els.importDeckInput.click(); });
+      els.importDeckInput.addEventListener('change', async function (e) {
+        const file = e.target.files[0];
+        e.target.value = '';
+        if (!file) return;
+        const baseName = file.name.replace(/\.[^.]+$/, '').trim() || t('importedDeck');
+        await withLoading(async function () {
+          try {
+            const deck = await addDeck(baseName, browseNaistId);
+            const parsed = await importAnkiFile(file);
+            await addCards(parsed, deck.id);
+            switchTab('edit', { deckId: deck.id });
+          } catch (err) {
+            alert(err && err.message ? err.message : t('importFailed'));
+          }
+        });
       });
-    });
+    }
   }
 
   // Shows the CURRENT naist level: child naists (as distinct, folder-like
@@ -1941,7 +1988,7 @@
   // ---------------- Naists tab: new-deck-with-import overlay ----------------
 
   function bindNewDeckOverlay() {
-    if (els.newDeckOverlay.dataset.bound) return;
+    if (!els.newDeckOverlay || els.newDeckOverlay.dataset.bound) return;
     els.newDeckOverlay.dataset.bound = '1';
     els.newDeckEmptyBtn.addEventListener('click', async function () {
       const name = els.newDeckNameInput.value.trim();
@@ -1995,12 +2042,14 @@
   // ---------------- Stody tab: active session ----------------
 
   function bindStudyTab() {
-    if (els.showAnswerBtn.dataset.bound) return;
+    if (!els.showAnswerBtn || els.showAnswerBtn.dataset.bound) return;
     els.showAnswerBtn.dataset.bound = '1';
     els.showAnswerBtn.addEventListener('click', revealAnswer);
-    Array.prototype.slice.call(els.ratingButtons.querySelectorAll('.rating-btn')).forEach(function (btn) {
-      btn.addEventListener('click', function () { rateCard(btn.dataset.rating); });
-    });
+    if (els.ratingButtons) {
+      Array.prototype.slice.call(els.ratingButtons.querySelectorAll('.rating-btn')).forEach(function (btn) {
+        btn.addEventListener('click', function () { rateCard(btn.dataset.rating); });
+      });
+    }
 
     // Click anywhere on the card itself to move things along: first click
     // reveals the answer (same as Show Answer); once the answer is showing,
@@ -2008,12 +2057,16 @@
     // it's still scheduled and still undoable). Occlusion masks keep their
     // own click-to-reveal behavior — a pre-reveal mask click is left to
     // occlusion.js and never reveals everything or advances.
-    const cardShell = els.studyCard.querySelector('.card-shell');
+    const cardShell = els.studyCard && els.studyCard.querySelector('.card-shell');
     if (cardShell) cardShell.addEventListener('click', onStudyCardClick);
 
-    els.emptyBackBtn.addEventListener('click', function () { endStudySession(); switchTab('naists'); });
-    els.undoRatingBtn.addEventListener('click', undoLastRating);
-    els.studyNoDeckGotoBtn.addEventListener('click', function () { switchTab('naists'); });
+    if (els.emptyBackBtn) {
+      els.emptyBackBtn.addEventListener('click', function () { endStudySession(); switchTab('naists'); });
+    }
+    if (els.undoRatingBtn) els.undoRatingBtn.addEventListener('click', undoLastRating);
+    if (els.studyNoDeckGotoBtn) {
+      els.studyNoDeckGotoBtn.addEventListener('click', function () { switchTab('naists'); });
+    }
   }
 
   // Opening the Stody tab directly (tab-bar click, no forced deckId): if a
@@ -2401,12 +2454,12 @@
       return;
     }
     try {
-      els.pigOverlayImg.src = await getRandomPhotoPath();
+      if (els.pigOverlayImg) els.pigOverlayImg.src = await getRandomPhotoPath();
     } catch (err) {
-      els.pigOverlayImg.removeAttribute('src');
+      if (els.pigOverlayImg) els.pigOverlayImg.removeAttribute('src');
     }
-    els.pigOverlayImg.alt = t('pigs');
-    els.pigOverlayText.textContent = getRandomEncouragement(currentUsername);
+    if (els.pigOverlayImg) els.pigOverlayImg.alt = t('pigs');
+    if (els.pigOverlayText) els.pigOverlayText.textContent = getRandomEncouragement(currentUsername);
     if (els.pigOverlayContinue) els.pigOverlayContinue.textContent = t('studyingContinue');
     els.pigOverlay.hidden = false;
     _pigOverlayArmed = true;
@@ -2553,7 +2606,7 @@
   }
 
   function bindEditView() {
-    if (els.addCardBtn.dataset.bound) return;
+    if (!els.addCardBtn || els.addCardBtn.dataset.bound) return;
     els.addCardBtn.dataset.bound = '1';
     els.editNoDeckGotoBtn.addEventListener('click', function () { switchTab('naists'); });
 
@@ -3025,7 +3078,7 @@
 
   async function renderStore() {
     updateBucksDisplay();
-    const active = els.tabBtns.find(function (b) { return b.classList.contains('active'); });
+    const active = (els.tabBtns || []).find(function (b) { return b.classList.contains('active'); });
     applySellMode(sellModeForTab(active ? active.dataset.tab : 'store'));
 
     els.storeAnimalList.innerHTML = '';
@@ -3234,7 +3287,7 @@
     economy.bucks = Math.round((economy.bucks + refund) * 100) / 100;
     await persistEconomy();
     removeScatterAnimal(els.pigField, speciesId, instanceId);
-    const active = els.tabBtns.find(function (b) { return b.classList.contains('active'); });
+    const active = (els.tabBtns || []).find(function (b) { return b.classList.contains('active'); });
     if (active && active.dataset.tab === 'store') await renderStore();
   }
 
@@ -3461,14 +3514,18 @@
   // ---------------- keyboard shortcuts help ----------------
 
   function bindShortcutsOverlay() {
-    if (els.shortcutsOverlay.dataset.bound) return;
+    if (!els.shortcutsOverlay || els.shortcutsOverlay.dataset.bound) return;
     els.shortcutsOverlay.dataset.bound = '1';
-    els.shortcutsBtn.addEventListener('click', function () {
-      els.shortcutsOverlay.hidden = !els.shortcutsOverlay.hidden;
-    });
-    els.shortcutsCloseBtn.addEventListener('click', function () {
-      els.shortcutsOverlay.hidden = true;
-    });
+    if (els.shortcutsBtn) {
+      els.shortcutsBtn.addEventListener('click', function () {
+        els.shortcutsOverlay.hidden = !els.shortcutsOverlay.hidden;
+      });
+    }
+    if (els.shortcutsCloseBtn) {
+      els.shortcutsCloseBtn.addEventListener('click', function () {
+        els.shortcutsOverlay.hidden = true;
+      });
+    }
     els.shortcutsOverlay.addEventListener('mousedown', function (e) {
       if (e.target === els.shortcutsOverlay) els.shortcutsOverlay.hidden = true;
     });
@@ -3484,7 +3541,7 @@
       // '?' toggles the shortcuts help panel from almost anywhere.
       if (!typing && (e.key === '?' || (e.shiftKey && e.key === '/'))) {
         e.preventDefault();
-        els.shortcutsOverlay.hidden = !els.shortcutsOverlay.hidden;
+        if (els.shortcutsOverlay) els.shortcutsOverlay.hidden = !els.shortcutsOverlay.hidden;
         return;
       }
       if (e.key === 'Escape' && els.pigOverlay && !els.pigOverlay.hidden) {
