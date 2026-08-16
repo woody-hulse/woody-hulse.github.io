@@ -1,22 +1,35 @@
 // app.js — ties storage.js, srs.js, stats.js, anki-import.js, and pigs.js
-// together: tabs, the unified Naists browser, the Stody session flow, the
-// Edit Daeck card CRUD UI, stats, and the pig encouragement interludes.
-//
-// IA: four tabs — Stody (the active study session, unchanged internally,
-// defaults to resuming the last-studied deck), Naists (the landing/default
-// tab: browse naists/decks, create/rename/delete/move, create-deck-with-
-// import, export), Edit Daeck (add-card area + this deck's card list + deck
-// management, scoped to whichever deck is currently "open for editing"),
-// Staets. A deck row in Naists has explicit "Stody"/"Cram"/"Edit"
-// buttons that jump to the Stody/Edit tabs scoped to that specific deck via
-// switchTab(tab, opts).
+// together: tabs, the unified Nests browser, the study session flow, the
+// Edit Deck card CRUD UI, stats, and the store/economy.
 
 (function () {
-  // Fixed, not user-configurable — a bigbert break happens every 10 carbs.
-  var BIGBERT_INTERVAL = 10;
+  const ANIMAL_SHOP = [
+    { id: 'chickens', base: 15 },
+    { id: 'sheep', base: 100 },
+    { id: 'ducks', base: 1100 },
+    { id: 'retrievers', base: 12000 },
+    { id: 'pigs', base: 130000 },
+    { id: 'fish', base: 1400000 }
+  ];
+  const PRICE_GROWTH = 1.15;
+  const ENCOURAGEMENT_INTERVAL = 10;
+  const STORE_BACKGROUNDS = [
+    { id: 'grass', nameKey: 'bgGrass', swatch: '#bfe08e', swatchImage: 'resources/grass.jpg', price: 120 }
+  ];
+  const ANIMAL_THUMBS = {
+    chickens: 'resources/chickens/chicken-standing.png',
+    sheep: 'resources/sheep/sheep-standing.png',
+    ducks: 'resources/ducks/duck-standing.png',
+    retrievers: 'resources/retrievers/retriever-standing.png',
+    pigs: 'resources/pigs/transparent/piglet-standing-side.png',
+    fish: 'resources/fish/fish-goldfish.png'
+  };
 
   let currentUsername = null;
-  let pigState = { totalPigs: 1, starCount: 0 };
+  let economy = { bucks: 0, animals: { chickens: 0, sheep: 0, ducks: 0, retrievers: 0, pigs: 0, fish: 0 }, unlockedBackgrounds: [], animalPlacements: {}, pens: [], troughs: [] };
+  let addFormTags = [];
+  let occlusionFormTags = [];
+  let knownTags = [];
 
   // Guards the cloud sign-in entry path. A single authenticated user can be
   // reported from three overlapping sources (the signInWithGoogle() return
@@ -68,12 +81,13 @@
     queue: [],
     currentCard: null,
     reviewedCount: 0,
-    cardsSinceLastPig: 0,
+    activeTag: null,
     // Single-level "undo last rating" support. Set right after a rating is
     // applied; cleared on undo or when a new rating overwrites it. Not
     // cleared by simply advancing to the next card, so undo still works
     // after you've moved on and noticed the mistake.
-    lastAction: null
+    lastAction: null,
+    cardsSinceLastPig: 0
   };
 
   const els = {};
@@ -82,6 +96,7 @@
 
   async function init() {
     cacheEls();
+    applyI18n(document);
     setSpinnerImage(els.spinnerImg);
     bindAuthScreen();
     bindKeyboardShortcuts();
@@ -156,17 +171,20 @@
 
     els.app = document.getElementById('app');
     els.userGreeting = document.getElementById('user-greeting');
-    els.pigCountDisplay = document.getElementById('pig-count-display');
-    els.starCountDisplay = document.getElementById('star-count-display');
-    els.starCountValue = document.getElementById('star-count-value');
+    els.appTitle = document.getElementById('app-title');
+    els.bucksValue = document.getElementById('bucks-value');
+    els.bucksDisplay = document.getElementById('bucks-display');
+    els.bucksLabel = document.getElementById('bucks-label');
     els.tabBtns = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
     els.views = {
       naists: document.getElementById('view-naists'),
       study: document.getElementById('view-study'),
       edit: document.getElementById('view-edit'),
       stats: document.getElementById('view-stats'),
-      pigs: document.getElementById('view-pigs')
+      farm: document.getElementById('view-farm'),
+      store: document.getElementById('view-store')
     };
+    els.focusBtn = document.getElementById('focus-btn');
     els.settingsBtn = document.getElementById('settings-btn');
 
     // ---- text-prompt overlay (custom window.prompt replacement) ----
@@ -190,6 +208,14 @@
     els.settingsSignoutBtn = document.getElementById('settings-signout-btn');
     els.settingsCloseBtn = document.getElementById('settings-close-btn');
     els.settingsThemeRow = document.getElementById('settings-theme-row');
+    els.settingsVocabToggle = document.getElementById('settings-vocab-toggle');
+    els.settingsFocusToggle = document.getElementById('settings-focus-toggle');
+    els.settingsEncouragementToggle = document.getElementById('settings-encouragement-toggle');
+    els.addCardTags = document.getElementById('add-card-tags');
+    els.occlusionCardTags = document.getElementById('occlusion-card-tags');
+    els.storeAnimalList = document.getElementById('store-animal-list');
+    els.storeFarmList = document.getElementById('store-farm-list');
+    els.storeBgList = document.getElementById('store-bg-list');
 
     // ---- Naists tab ----
     els.naistsBreadcrumb = document.getElementById('naists-breadcrumb');
@@ -213,8 +239,9 @@
     els.studyNoDeckState = document.getElementById('study-no-deck-state');
     els.studyNoDeckGotoBtn = document.getElementById('study-no-deck-goto-btn');
     els.studySession = document.getElementById('study-session');
-    els.backToDecksBtn = document.getElementById('back-to-decks-btn');
-    els.sessionProgress = document.getElementById('session-progress');
+    els.sessionProgressChip = document.getElementById('session-progress-chip');
+    els.sessionProgressName = document.getElementById('session-progress-name');
+    els.sessionProgressCounts = document.getElementById('session-progress-counts');
     els.cramModeBadge = document.getElementById('cram-mode-badge');
     els.undoRatingBtn = document.getElementById('undo-rating-btn');
     els.emptyState = document.getElementById('empty-state');
@@ -228,6 +255,7 @@
     els.cardBack = document.getElementById('card-back');
     els.cardBackText = document.getElementById('card-back-text');
     els.cardBackImage = document.getElementById('card-back-image');
+    els.cardTags = document.getElementById('card-tags');
     els.showAnswerBtn = document.getElementById('show-answer-btn');
     els.ratingButtons = document.getElementById('rating-buttons');
 
@@ -262,15 +290,14 @@
 
     els.pigField = document.getElementById('pig-field');
 
+    els.shortcutsBtn = document.getElementById('shortcuts-btn');
+    els.shortcutsOverlay = document.getElementById('shortcuts-overlay');
+    els.shortcutsCloseBtn = document.getElementById('shortcuts-close-btn');
+
     els.pigOverlay = document.getElementById('pig-encouragement-overlay');
     els.pigOverlayImg = document.getElementById('pig-encouragement-img');
     els.pigOverlayText = document.getElementById('pig-encouragement-text');
     els.pigOverlayContinue = document.getElementById('pig-encouragement-continue');
-    els.pigStarBadge = document.getElementById('pig-star-badge');
-
-    els.shortcutsBtn = document.getElementById('shortcuts-btn');
-    els.shortcutsOverlay = document.getElementById('shortcuts-overlay');
-    els.shortcutsCloseBtn = document.getElementById('shortcuts-close-btn');
 
     els.loadingOverlay = document.getElementById('loading-overlay');
     els.spinnerImg = document.getElementById('spinner-img');
@@ -402,7 +429,7 @@
     // Already inside the app: just keep the greeting fresh (e.g. a token
     // refresh re-firing onAuthStateChanged) and bail.
     if (!els.app.hidden) {
-      els.userGreeting.textContent = 'Hi, ' + (user.displayName || user.email || 'friend');
+      refreshGreeting();
       return;
     }
     if (_cloudEntering) return;
@@ -522,37 +549,233 @@
     els.authScreen.hidden = true;
     els.app.hidden = false;
 
-    pigState = await getPigState();
+    economy = await getEconomy();
+    const settings = await getSettings();
+    setFunSpellings(!!settings.funSpellings);
+    applyI18n(document);
     await applyAppearanceFromSettings();
+    applyFocusMode(!!settings.focusMode);
+    applySellMode(false);
 
-    els.userGreeting.textContent = currentUsername ? 'Hi, ' + currentUsername : '';
-    updatePigCountDisplay();
-    updateStarCountDisplay();
+    refreshGreeting();
+    updateBucksDisplay();
 
     bindTabs();
+    bindLayoutMode();
     bindNaistsView();
     bindNewDeckOverlay();
     bindStudyTab();
     bindEditView();
-    bindPigOverlay();
+    bindStoreView();
     bindShortcutsOverlay();
+    bindPigOverlay();
     bindSettingsOverlay();
     bindTextPrompt();
+    bindAnimalSell();
+    setAnimalPlacementHooks(
+      function () { return economy.animalPlacements || {}; },
+      function (next) {
+        economy.animalPlacements = next;
+        persistEconomy();
+      }
+    );
+    setPenTroughHooks(
+      function () { return { pens: economy.pens || [], troughs: economy.troughs || [] }; },
+      function (pens) { economy.pens = pens; persistEconomy(); },
+      function (troughs) { economy.troughs = troughs; persistEconomy(); }
+    );
+    bindAnimalFieldDrag();
 
     await withLoading(async function () {
-      await initScatteredPigs(els.pigField, pigState.totalPigs);
+      await refreshKnownTags();
+      await initScatteredAnimals(els.pigField, economy.animals);
+      if (typeof syncFarmGap === 'function') syncFarmGap();
       await renderNaistsBrowser();
     });
   }
 
-  function updatePigCountDisplay() {
-    els.pigCountDisplay.textContent = pigState.totalPigs + (pigState.totalPigs === 1 ? ' bigbert' : ' bigberts');
+  function refreshGreeting() {
+    const name = currentUsername && currentUsername.trim() ? currentUsername.trim() : '';
+    els.userGreeting.textContent = name ? t('hi', { name: name }) : '';
   }
 
-  function updateStarCountDisplay() {
-    const count = pigState.starCount || 0;
-    els.starCountValue.textContent = count;
-    els.starCountDisplay.hidden = count === 0;
+  function displayDeckName(deck) {
+    if (!deck) return '';
+    if (deck.id === DEFAULT_DECK_ID && (deck.name === 'General' || deck.name === 'Gaineral')) {
+      return t('defaultDeck');
+    }
+    return deck.name;
+  }
+
+  function formatMoney(n) {
+    const abs = Math.abs(Number(n) || 0);
+    const sign = n < 0 ? '-' : '';
+    if (abs >= 1e12) return sign + (abs / 1e12).toFixed(2) + 'T';
+    if (abs >= 1e9) return sign + (abs / 1e9).toFixed(2) + 'B';
+    if (abs >= 1e6) return sign + (abs / 1e6).toFixed(2) + 'M';
+    if (abs >= 1000) return sign + (abs / 1e3).toFixed(2) + 'K';
+    return sign + abs.toFixed(2);
+  }
+
+  function formatCurrency(n) {
+    return '$' + formatMoney(n);
+  }
+
+  function buyPrice(speciesId, ownedCount) {
+    const spec = ANIMAL_SHOP.find(function (s) { return s.id === speciesId; });
+    if (!spec) return 0;
+    return Math.round(spec.base * Math.pow(PRICE_GROWTH, ownedCount || 0) * 100) / 100;
+  }
+
+  function sellPrice(speciesId, ownedCount) {
+    return Math.round(buyPrice(speciesId, ownedCount) * 0.5 * 100) / 100;
+  }
+
+  function bucksPerRating(animals) {
+    let product = 1;
+    let any = false;
+    ANIMAL_SHOP.forEach(function (s) {
+      const n = (animals && animals[s.id]) || 0;
+      if (n >= 1) {
+        product *= n;
+        any = true;
+      }
+    });
+    const base = Math.max(1, any ? product : 1);
+    // M = 1 + per-pen trough (0.18·w(T)) and same-species (+0.15/animal) bonuses.
+    const boost = (typeof computeTroughBoost === 'function')
+      ? computeTroughBoost(els.pigField, economy.pens, economy.troughs)
+      : 1;
+    return Math.round(base * boost * 100) / 100;
+  }
+
+  function penPriceForSize(widthVw, heightVh) {
+    // price = max(rate*2, rate*4 * (widthVw*heightVh)/(8*14)); sell refunds 50% of paid
+    const rate = bucksPerRating(economy.animals);
+    const area = Math.max(0, widthVw * heightVh);
+    const ref = 8 * 14;
+    return Math.round(Math.max(rate * 2, rate * 4 * (area / ref)) * 100) / 100;
+  }
+
+  function troughBuyPrice() {
+    return Math.round(bucksPerRating(economy.animals) * 5 * 100) / 100;
+  }
+
+  function updateBucksDisplay() {
+    if (els.bucksValue) els.bucksValue.textContent = formatCurrency(economy.bucks);
+  }
+
+  function applyFocusMode(on) {
+    on = !!on;
+    document.documentElement.classList.toggle('focus-mode', on);
+    if (els.pigField) els.pigField.classList.toggle('focus-hidden', on);
+    if (els.bucksDisplay) els.bucksDisplay.hidden = on;
+    if (els.focusBtn) {
+      els.focusBtn.classList.toggle('active', on);
+      els.focusBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    if (els.settingsFocusToggle) {
+      els.settingsFocusToggle.setAttribute('aria-checked', on ? 'true' : 'false');
+    }
+    if (on && typeof cancelPenPlacement === 'function') cancelPenPlacement();
+    if (on && els.pigOverlay && !els.pigOverlay.hidden) dismissPigEncouragement();
+  }
+
+  async function setFocusMode(on) {
+    const s = await getSettings();
+    s.focusMode = !!on;
+    await saveSettings(s);
+    applyFocusMode(!!s.focusMode);
+  }
+
+  function applySellMode(on) {
+    if (!els.pigField) return;
+    els.pigField.classList.toggle('sell-mode', !!on);
+  }
+
+  function isCompactLayout() {
+    return typeof window.isCompactLayout === 'function'
+      ? window.isCompactLayout()
+      : !!(window.matchMedia && window.matchMedia('(max-width: 720px)').matches);
+  }
+
+  function sellModeForTab(tab) {
+    return tab === 'store';
+  }
+
+  function syncLayoutMode() {
+    const compact = isCompactLayout();
+    document.documentElement.classList.toggle('compact-layout', compact);
+    const active = els.tabBtns && els.tabBtns.find(function (b) { return b.classList.contains('active'); });
+    let tab = active ? active.dataset.tab : 'naists';
+    if (!compact && tab === 'farm') {
+      switchTab('naists');
+      tab = 'naists';
+    }
+    applySellMode(sellModeForTab(tab));
+    if (!sellModeForTab(tab)) hideSellTip();
+    if (typeof relayoutField === 'function') relayoutField(els.pigField);
+  }
+
+  function bindLayoutMode() {
+    if (document.documentElement.dataset.layoutModeBound) return;
+    document.documentElement.dataset.layoutModeBound = '1';
+    syncLayoutMode();
+    if (window.matchMedia) {
+      const mq = window.matchMedia('(max-width: 720px)');
+      if (mq.addEventListener) mq.addEventListener('change', syncLayoutMode);
+      else if (mq.addListener) mq.addListener(syncLayoutMode);
+    }
+    window.addEventListener('resize', syncLayoutMode);
+  }
+
+  async function persistEconomy() {
+    economy = await saveEconomy(economy);
+    updateBucksDisplay();
+  }
+
+  async function refreshKnownTags() {
+    const cards = await getCards();
+    const settings = await getSettings();
+    const set = {};
+    (settings.tagVocab || []).forEach(function (tag) { if (tag) set[tag] = true; });
+    cards.forEach(function (c) {
+      (c.tags || []).forEach(function (tag) {
+        if (tag) set[tag] = true;
+      });
+    });
+    knownTags = Object.keys(set).sort(function (a, b) { return a.localeCompare(b); });
+  }
+
+  async function rememberTag(name) {
+    const value = String(name || '').replace(/^#/, '').trim();
+    if (!value) return;
+    const s = await getSettings();
+    const vocab = Array.isArray(s.tagVocab) ? s.tagVocab.slice() : [];
+    if (!vocab.some(function (t) { return t.toLowerCase() === value.toLowerCase(); })) {
+      vocab.push(value);
+      s.tagVocab = vocab;
+      await saveSettings(s);
+    }
+    await refreshKnownTags();
+  }
+
+  async function applyVocabAndRerender() {
+    applyI18n(document);
+    refreshGreeting();
+    updateBucksDisplay();
+    const active = els.tabBtns.find(function (b) { return b.classList.contains('active'); });
+    const tab = active ? active.dataset.tab : 'naists';
+    if (tab === 'naists') await renderNaistsBrowser();
+    if (tab === 'edit') await renderEditTab();
+    if (tab === 'stats') await renderStatsView();
+    if (tab === 'store') await renderStore();
+    if (tab === 'study') {
+      if (els.sessionProgressChip && session.activeDeckName) updateSessionProgress();
+      if (session.currentCard) updateRatingIntervalPreviews();
+    } else {
+      hideSessionProgressChip();
+    }
   }
 
   // ---------------- appearance (background + foreground themes) ----------------
@@ -563,19 +786,19 @@
   // System uses prefers-color-scheme; Light/Dark set data-theme and override).
 
   const BACKGROUND_PRESETS = [
-    { id: 'paper', name: 'Paper', swatch: '#faf6f7' },
-    { id: 'slate', name: 'Slate', swatch: '#e6ebf0' },
-    { id: 'dusk', name: 'Dusk', swatch: '#ece5f6' },
-    { id: 'pig', name: 'Pig', swatch: '#fbe0ee' },
-    { id: 'grass', name: 'Grass', swatch: '#bfe08e', swatchImage: 'resources/grass.jpg' }
+    { id: 'paper', nameKey: 'bgPaper', swatch: '#faf6f7' },
+    { id: 'slate', nameKey: 'bgSlate', swatch: '#e6ebf0' },
+    { id: 'dusk', nameKey: 'bgDusk', swatch: '#ece5f6' },
+    { id: 'pig', nameKey: 'bgPig', swatch: '#fbe0ee' },
+    { id: 'grass', nameKey: 'bgGrass', swatch: '#bfe08e', swatchImage: 'resources/grass.jpg', locked: true }
   ];
 
   const ACCENT_PRESETS = [
-    { id: 'raspberry', name: 'Berry', swatch: '#d6337a' },
-    { id: 'blueberry', name: 'Blue', swatch: '#3b6fd4' },
-    { id: 'matcha', name: 'Matcha', swatch: '#2f9e63' },
-    { id: 'tangerine', name: 'Tang', swatch: '#e07d2a' },
-    { id: 'grape', name: 'Grape', swatch: '#8b46c8' }
+    { id: 'raspberry', nameKey: 'accentBerry', swatch: '#d6337a' },
+    { id: 'blueberry', nameKey: 'accentBlue', swatch: '#3b6fd4' },
+    { id: 'matcha', nameKey: 'accentMatcha', swatch: '#2f9e63' },
+    { id: 'tangerine', nameKey: 'accentTang', swatch: '#e07d2a' },
+    { id: 'grape', nameKey: 'accentGrape', swatch: '#8b46c8' }
   ];
 
   // Applies the chosen background + accent + light/dark appearance to
@@ -596,7 +819,13 @@
     const accent = s.accentPreset || 'raspberry';
     document.documentElement.dataset.accent = accent;
 
-    const bg = s.backgroundPreset || 'paper';
+    let bg = s.backgroundPreset || 'paper';
+    const unlocked = (economy && economy.unlockedBackgrounds) || [];
+    const preset = BACKGROUND_PRESETS.find(function (p) { return p.id === bg; });
+    if (bg !== 'custom' && !preset) bg = 'paper';
+    if (preset && preset.locked && unlocked.indexOf(bg) === -1) {
+      bg = 'paper';
+    }
     if (bg === 'custom' && s.backgroundImage) {
       document.documentElement.dataset.bg = 'custom';
       document.body.style.backgroundImage = 'url("' + s.backgroundImage + '")';
@@ -630,16 +859,16 @@
   // user can still dismiss (they just stay "friend" until they set one).
   async function promptForNickname(required) {
     const name = await openTextPrompt({
-      title: 'Your nameb:',
-      placeholder: 'What should we call you?',
+      title: t('yourName'),
+      placeholder: t('namePlaceholder'),
       value: currentUsername || '',
-      confirmText: required ? 'Gobing' : 'Save',
+      confirmText: required ? t('go') : t('save'),
       requireNonEmpty: true
     });
     if (name && name.trim()) {
       currentUsername = name.trim();
       await setUsername(currentUsername);
-      els.userGreeting.textContent = 'Hi, ' + currentUsername;
+      refreshGreeting();
       if (els.settingsNicknameValue) els.settingsNicknameValue.textContent = currentUsername;
     }
     return currentUsername;
@@ -691,10 +920,10 @@
     opts = opts || {};
     bindTextPrompt();
     if (_textPromptResolve) _closeTextPrompt(null);
-    els.textPromptTitle.textContent = opts.title || 'Naemb';
+    els.textPromptTitle.textContent = opts.title || t('name');
     els.textPromptInput.value = opts.value || '';
     els.textPromptInput.placeholder = opts.placeholder || '';
-    els.textPromptConfirm.textContent = opts.confirmText || 'OK';
+    els.textPromptConfirm.textContent = opts.confirmText || t('ok');
     els.textPromptConfirm.dataset.requireNonEmpty = opts.requireNonEmpty ? '1' : '';
     _syncTextPromptConfirm();
     els.textPromptOverlay.hidden = false;
@@ -705,7 +934,17 @@
   // ---------------- settings overlay ----------------
 
   function bindSettingsOverlay() {
+    if (els.settingsOverlay.dataset.bound) return;
+    els.settingsOverlay.dataset.bound = '1';
     els.settingsBtn.addEventListener('click', openSettings);
+    if (els.focusBtn && !els.focusBtn.dataset.bound) {
+      els.focusBtn.dataset.bound = '1';
+      els.focusBtn.addEventListener('click', async function () {
+        const s = await getSettings();
+        await setFocusMode(!s.focusMode);
+        await renderSettings();
+      });
+    }
     els.settingsCloseBtn.addEventListener('click', closeSettings);
     els.settingsOverlay.addEventListener('mousedown', function (e) {
       if (e.target === els.settingsOverlay) closeSettings();
@@ -732,6 +971,30 @@
       await renderSettings();
     });
 
+    els.settingsVocabToggle.addEventListener('click', async function () {
+      const s = await getSettings();
+      s.funSpellings = !s.funSpellings;
+      await saveSettings(s);
+      setFunSpellings(!!s.funSpellings);
+      await applyVocabAndRerender();
+      await renderSettings();
+    });
+
+    els.settingsFocusToggle.addEventListener('click', async function () {
+      const s = await getSettings();
+      await setFocusMode(!s.focusMode);
+      await renderSettings();
+    });
+
+    if (els.settingsEncouragementToggle) {
+      els.settingsEncouragementToggle.addEventListener('click', async function () {
+        const s = await getSettings();
+        s.encouragement = !s.encouragement;
+        await saveSettings(s);
+        await renderSettings();
+      });
+    }
+
     els.settingsThemeRow.addEventListener('click', async function (e) {
       const btn = e.target.closest('[data-theme-choice]');
       if (!btn) return;
@@ -757,7 +1020,7 @@
   async function renderSettings() {
     const settings = await getSettings();
 
-    els.settingsNicknameValue.textContent = currentUsername || 'friend';
+    els.settingsNicknameValue.textContent = currentUsername || t('friend');
 
     // Sign out only makes sense (and is only wired) with cloud auth on.
     els.settingsSignoutSection.hidden = !(window.CloudAuth && window.CloudAuth.isConfigured);
@@ -777,8 +1040,12 @@
       await renderSettings();
     });
 
+    const unlocked = economy.unlockedBackgrounds || [];
+    const visibleBgs = BACKGROUND_PRESETS.filter(function (p) {
+      return !p.locked || unlocked.indexOf(p.id) !== -1;
+    });
     const activeBg = (settings.backgroundPreset === 'custom') ? 'custom' : (settings.backgroundPreset || 'paper');
-    _renderSwatches(els.settingsBgSwatches, BACKGROUND_PRESETS, activeBg, async function (id) {
+    _renderSwatches(els.settingsBgSwatches, visibleBgs, activeBg, async function (id) {
       const s = await getSettings();
       s.backgroundPreset = id;
       await saveSettings(s);
@@ -788,8 +1055,18 @@
 
     const hasCustom = settings.backgroundPreset === 'custom' && !!settings.backgroundImage;
     els.settingsBgImageClear.hidden = !hasCustom;
-    els.settingsBgStatus.textContent = hasCustom ? 'Using a custom imaebg.' : '';
+    els.settingsBgStatus.textContent = hasCustom ? t('customBgOn') : '';
     els.settingsBgStatus.classList.remove('error');
+
+    _setToggle(els.settingsVocabToggle, !!settings.funSpellings);
+    _setToggle(els.settingsFocusToggle, !!settings.focusMode);
+    _setToggle(els.settingsEncouragementToggle, !!settings.encouragement);
+  }
+
+  function _setToggle(btn, on) {
+    if (!btn) return;
+    btn.setAttribute('aria-checked', on ? 'true' : 'false');
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
 
   function _renderSwatches(container, presets, activeId, onPick) {
@@ -807,11 +1084,12 @@
       } else {
         btn.style.background = preset.swatch;
       }
-      btn.title = preset.name;
-      btn.setAttribute('aria-label', preset.name);
+      const presetName = preset.nameKey ? t(preset.nameKey) : (preset.name || preset.id);
+      btn.title = presetName;
+      btn.setAttribute('aria-label', presetName);
       const label = document.createElement('span');
       label.className = 'swatch-label';
-      label.textContent = preset.name;
+      label.textContent = presetName;
       btn.appendChild(label);
       btn.addEventListener('click', function () { onPick(preset.id); });
       container.appendChild(btn);
@@ -823,7 +1101,7 @@
     e.target.value = '';
     if (!file) return;
     els.settingsBgStatus.classList.remove('error');
-    els.settingsBgStatus.textContent = 'Prosessing imaebg…';
+    els.settingsBgStatus.textContent = t('processingImage');
     try {
       // Compress hard: page backgrounds don't need card-level fidelity, and a
       // big data URI can blow the localStorage/Firestore-doc quota.
@@ -844,13 +1122,15 @@
     } catch (err) {
       console.error('Custom background failed:', err);
       els.settingsBgStatus.classList.add('error');
-      els.settingsBgStatus.textContent = 'That imaebg was too big or unreadable — try a smaller one.';
+      els.settingsBgStatus.textContent = t('customBgFail');
     }
   }
 
   // ---------------- tabs ----------------
 
   function bindTabs() {
+    if (els.app.dataset.tabsBound) return;
+    els.app.dataset.tabsBound = '1';
     els.tabBtns.forEach(function (btn) {
       btn.addEventListener('click', function () { switchTab(btn.dataset.tab); });
     });
@@ -863,16 +1143,21 @@
   // opts, so it always falls through to those defaults.
   function switchTab(tab, opts) {
     opts = opts || {};
+    if (tab === 'farm' && !isCompactLayout()) tab = 'naists';
     els.tabBtns.forEach(function (btn) {
       btn.classList.toggle('active', btn.dataset.tab === tab);
     });
     Object.keys(els.views).forEach(function (name) {
-      els.views[name].classList.toggle('active', name === tab);
+      if (els.views[name]) els.views[name].classList.toggle('active', name === tab);
     });
+    document.documentElement.classList.toggle('farm-tab', tab === 'farm');
+    if (typeof syncFarmGap === 'function') syncFarmGap();
 
     if (tab === 'naists') renderNaistsBrowser();
     if (tab === 'study') {
-      if (opts.deckId) {
+      if (opts.tag) {
+        startDeckSession(null, '#' + opts.tag, { tag: opts.tag, cram: !!opts.cram });
+      } else if (opts.deckId) {
         startDeckSession(opts.deckId, opts.deckName, opts.cram ? { cram: true } : undefined);
       } else {
         showStudyTab();
@@ -886,6 +1171,12 @@
       }
     }
     if (tab === 'stats') renderStatsView();
+    if (tab === 'store') renderStore();
+    applySellMode(sellModeForTab(tab));
+    if (!sellModeForTab(tab)) hideSellTip();
+    if (tab !== 'study') hideSessionProgressChip();
+    else if (session.activeDeckName) updateSessionProgress();
+    if (tab !== 'study' && els.pigOverlay && !els.pigOverlay.hidden) dismissPigEncouragement();
   }
 
   // ---------------- naist helpers (shared: Naists browser + Edit Daeck breadcrumb) ----------------
@@ -912,7 +1203,8 @@
 
   function deckDisplayLabel(deck, naists) {
     const pathLabel = naistPathLabel(naists, deck.naistId);
-    return pathLabel ? pathLabel + ' / ' + deck.name : deck.name;
+    const name = displayDeckName(deck);
+    return pathLabel ? pathLabel + ' / ' + name : name;
   }
 
   // Every naist nested anywhere inside `rootId` (not including itself), at
@@ -991,12 +1283,15 @@
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'icon-action-btn delete-btn';
-    btn.title = 'Delete';
-    btn.setAttribute('aria-label', 'Delete');
+    btn.title = t('delete');
+    btn.setAttribute('aria-label', t('delete'));
     const svg = _svgEl('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' });
     svg.appendChild(_svgEl('path', { d: _TRASH_PATH }));
     btn.appendChild(svg);
-    btn.addEventListener('click', onClick);
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      onClick(e);
+    });
     return btn;
   }
 
@@ -1010,7 +1305,7 @@
   function renderBreadcrumb(containerEl, naists, currentNaistId, onNavigate, trailingLabel) {
     containerEl.innerHTML = '';
     const path = naistPath(naists, currentNaistId);
-    const crumbs = [{ id: null, name: 'All daecks' }].concat(
+    const crumbs = [{ id: null, name: t('allDecks') }].concat(
       path.map(function (n) { return { id: n.id, name: n.name }; })
     );
     if (trailingLabel !== undefined && trailingLabel !== null) {
@@ -1049,13 +1344,15 @@
   // ---------------- Naists tab: browser ----------------
 
   function bindNaistsView() {
+    if (els.naistsSearch.dataset.bound) return;
+    els.naistsSearch.dataset.bound = '1';
     els.naistsSearch.addEventListener('input', function () { renderNaistsBrowser(); });
 
     els.newNaistBtn.addEventListener('click', async function () {
       const name = await openTextPrompt({
-        title: 'New naist',
-        placeholder: 'Naist name',
-        confirmText: 'Create',
+        title: t('newNestTitle'),
+        placeholder: t('nestName'),
+        confirmText: t('create'),
         requireNonEmpty: true
       });
       if (!name || !name.trim()) return;
@@ -1073,7 +1370,7 @@
       const file = e.target.files[0];
       e.target.value = '';
       if (!file) return;
-      const baseName = file.name.replace(/\.[^.]+$/, '').trim() || 'Imported daeck';
+      const baseName = file.name.replace(/\.[^.]+$/, '').trim() || t('importedDeck');
       await withLoading(async function () {
         try {
           const deck = await addDeck(baseName, browseNaistId);
@@ -1081,7 +1378,7 @@
           await addCards(parsed, deck.id);
           switchTab('edit', { deckId: deck.id });
         } catch (err) {
-          alert(err && err.message ? err.message : 'Import failed.');
+          alert(err && err.message ? err.message : t('importFailed'));
         }
       });
     });
@@ -1119,8 +1416,8 @@
       const empty = document.createElement('div');
       empty.className = 'deck-picker-empty';
       empty.textContent = browseNaistId
-        ? 'This naist is empty.'
-        : 'No carbs yet — create a daeck to get started.';
+        ? t('emptyNest')
+        : t('noCardsYet');
       els.naistsList.appendChild(empty);
     }
 
@@ -1159,19 +1456,57 @@
     return childNaists.length + levelDecks.length;
   }
 
+  function normalizeTagQuery(query) {
+    return String(query || '').trim().replace(/^#/, '').toLowerCase();
+  }
+
+  function cardMatchesSearch(card, query) {
+    const q = query.toLowerCase();
+    const tagQ = normalizeTagQuery(query);
+    if ((card.front || '').toLowerCase().indexOf(q) !== -1) return true;
+    if ((card.back || '').toLowerCase().indexOf(q) !== -1) return true;
+    return (card.tags || []).some(function (tag) {
+      return String(tag).toLowerCase().indexOf(tagQ) !== -1;
+    });
+  }
+
+  function matchingTagName(query) {
+    const q = normalizeTagQuery(query);
+    if (!q) return null;
+    const exact = knownTags.find(function (tag) { return tag.toLowerCase() === q; });
+    return exact || null;
+  }
+
   function renderNaistsSearchResults(query, cards, decks, naists) {
     const deckNameById = {};
     decks.forEach(function (d) { deckNameById[d.id] = deckDisplayLabel(d, naists); });
 
-    const matches = cards.filter(function (c) {
-      return c.front.toLowerCase().indexOf(query) !== -1 || c.back.toLowerCase().indexOf(query) !== -1;
-    });
+    const matches = cards.filter(function (c) { return cardMatchesSearch(c, query); });
+    const tagMatch = matchingTagName(query);
 
     els.naistsList.innerHTML = '';
+
+    if (tagMatch) {
+      const bar = document.createElement('div');
+      bar.className = 'tag-study-bar';
+      const label = document.createElement('span');
+      label.textContent = '#' + tagMatch;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'secondary-btn';
+      btn.textContent = t('studyThisTag');
+      btn.addEventListener('click', function () {
+        switchTab('study', { tag: tagMatch });
+      });
+      bar.appendChild(label);
+      bar.appendChild(btn);
+      els.naistsList.appendChild(bar);
+    }
+
     if (matches.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'list-empty';
-      empty.textContent = 'No carbs match.';
+      empty.textContent = t('noCardsMatch');
       els.naistsList.appendChild(empty);
       return;
     }
@@ -1199,12 +1534,13 @@
   function buildDragHandle(kind, id, label) {
     const handle = document.createElement('span');
     handle.className = 'drag-handle';
-    handle.title = 'Drag to move';
+    handle.title = t('dragToMove');
     handle.setAttribute('aria-hidden', 'true');
     handle.innerHTML = '<svg viewBox="0 0 16 16"><circle cx="5" cy="4" r="1.35"/><circle cx="5" cy="8" r="1.35"/><circle cx="5" cy="12" r="1.35"/><circle cx="11" cy="4" r="1.35"/><circle cx="11" cy="8" r="1.35"/><circle cx="11" cy="12" r="1.35"/></svg>';
     handle.addEventListener('pointerdown', function (e) {
       beginPointerDrag(e, kind, id, label);
     });
+    handle.addEventListener('click', function (e) { e.stopPropagation(); });
     return handle;
   }
 
@@ -1325,7 +1661,7 @@
     g.className = 'drag-ghost';
     if (drag.kind === 'naist') g.appendChild(buildNaistIcon());
     const span = document.createElement('span');
-    span.textContent = drag.label || (drag.kind === 'naist' ? 'Naist' : 'Daeck');
+    span.textContent = drag.label || (drag.kind === 'naist' ? t('nest') : t('deck'));
     g.appendChild(span);
     return g;
   }
@@ -1434,7 +1770,7 @@
     chevron.type = 'button';
     chevron.className = 'naist-chevron' + (expanded ? ' expanded' : '') + (hasChildren ? '' : ' empty');
     chevron.disabled = !hasChildren;
-    chevron.setAttribute('aria-label', expanded ? 'Collapse naist' : 'Expand naist');
+    chevron.setAttribute('aria-label', expanded ? t('collapseNest') : t('expandNest'));
     chevron.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
     chevron.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -1454,15 +1790,29 @@
     const name = document.createElement('span');
     name.className = 'deck-row-name';
     name.textContent = naist.name;
+    name.title = t('rename');
+    name.addEventListener('click', async function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const newName = await openTextPrompt({
+        title: t('renameNest'),
+        value: naist.name,
+        confirmText: t('rename'),
+        requireNonEmpty: true
+      });
+      if (!newName || !newName.trim()) return;
+      await renameNaist(naist.id, newName.trim());
+      await renderNaistsBrowser();
+    });
     const meta = document.createElement('span');
     meta.className = 'naist-row-meta';
-    meta.textContent = rollup.deckCount + (rollup.deckCount === 1 ? ' daeck' : ' daecks');
+    meta.textContent = rollup.deckCount === 1 ? t('oneDeck') : t('nDecks', { n: rollup.deckCount });
     info.appendChild(name);
     info.appendChild(meta);
 
     const dueBadge = document.createElement('span');
     dueBadge.className = 'deck-due-badge' + (rollup.due === 0 ? ' none' : '');
-    dueBadge.textContent = rollup.due === 0 ? 'No carbs due' : rollup.due + ' due';
+    dueBadge.textContent = rollup.due === 0 ? t('noCardsDue') : t('nDue', { n: rollup.due });
 
     mainBtn.appendChild(info);
     mainBtn.appendChild(dueBadge);
@@ -1474,29 +1824,12 @@
     const actions = document.createElement('div');
     actions.className = 'browse-row-actions';
 
-    const renameBtn = document.createElement('button');
-    renameBtn.type = 'button';
-    renameBtn.className = 'secondary-btn';
-    renameBtn.textContent = 'Rename';
-    renameBtn.addEventListener('click', async function () {
-      const newName = await openTextPrompt({
-        title: 'Rename naist',
-        value: naist.name,
-        confirmText: 'Rename',
-        requireNonEmpty: true
-      });
-      if (!newName || !newName.trim()) return;
-      await renameNaist(naist.id, newName.trim());
-      await renderNaistsBrowser();
-    });
-
     const deleteBtn = buildDeleteButton(async function () {
-      if (!confirm('Delete naist "' + naist.name + '"? Anything inside (daecks and naists) moves up one level — nothing is deleted.')) return;
+      if (!confirm(t('deleteNestConfirm', { name: naist.name }))) return;
       await deleteNaist(naist.id);
       await renderNaistsBrowser();
     });
 
-    actions.appendChild(renameBtn);
     actions.appendChild(deleteBtn);
     body.appendChild(mainBtn);
     body.appendChild(actions);
@@ -1505,12 +1838,11 @@
     return row;
   }
 
-  // A deck row: name + due-count badge (yellow/gold — "something needs
-  // attention") + total-count badge (grey — neutral) on one line, explicit
-  // Stody/Cram/Edit buttons (no more "click the row to jump into a session"
-  // — those actions are opt-in and clearly labeled), and Rename/Move/Delete
-  // affordances so a deck's whole lifecycle is reachable from this one row.
-  // Draggable (grip handle or body) so it can be dropped into a naist; a
+  // A deck row: name + due-count badge + total-count badge on one line.
+  // Clicking the row (name, counts, empty space) starts a Study session.
+  // Cram and Edit stay explicit buttons and must not start study. The Study
+  // button remains as an extra affordance. Drag handle / delete do not start
+  // study. Rename lives on the Edit tab. Draggable via the grip handle; a
   // chevron-width spacer keeps its name aligned under sibling naist rows.
   function renderDeckRow(deck, naists, dueCount, totalCount, depth) {
     const row = document.createElement('div');
@@ -1529,15 +1861,16 @@
     info.className = 'browse-row-info';
     const name = document.createElement('span');
     name.className = 'deck-row-name';
-    name.textContent = deck.name;
+    name.textContent = displayDeckName(deck);
+    name.title = t('study');
     const counts = document.createElement('span');
     counts.className = 'deck-row-counts';
     const dueBadge = document.createElement('span');
     dueBadge.className = 'deck-due-badge' + (dueCount === 0 ? ' none' : '');
-    dueBadge.textContent = dueCount === 0 ? 'No carbs due' : dueCount + ' due';
+    dueBadge.textContent = dueCount === 0 ? t('noCardsDue') : t('nDue', { n: dueCount });
     const totalBadge = document.createElement('span');
     totalBadge.className = 'deck-total-badge';
-    totalBadge.textContent = totalCount + ' total';
+    totalBadge.textContent = t('nTotal', { n: totalCount });
     counts.appendChild(dueBadge);
     counts.appendChild(totalBadge);
     info.appendChild(name);
@@ -1548,29 +1881,30 @@
 
     const stodyBtn = document.createElement('button');
     stodyBtn.type = 'button';
-    stodyBtn.className = 'browse-row-stody-btn';
-    stodyBtn.textContent = 'Stody';
-    stodyBtn.addEventListener('click', function () {
-      switchTab('study', { deckId: deck.id, deckName: deck.name });
+    stodyBtn.className = 'secondary-btn';
+    stodyBtn.textContent = t('study');
+    stodyBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      switchTab('study', { deckId: deck.id, deckName: displayDeckName(deck) });
     });
 
     const cramBtn = document.createElement('button');
     cramBtn.type = 'button';
     cramBtn.className = 'secondary-btn';
-    cramBtn.textContent = 'Cram';
+    cramBtn.textContent = t('cram');
     cramBtn.disabled = totalCount === 0;
-    cramBtn.title = totalCount === 0
-      ? 'No cards in this deck yet'
-      : 'Study every card regardless of due date — does not affect scheduling';
-    cramBtn.addEventListener('click', function () {
-      switchTab('study', { deckId: deck.id, deckName: deck.name, cram: true });
+    cramBtn.title = totalCount === 0 ? t('noCramCards') : t('cramTitle');
+    cramBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      switchTab('study', { deckId: deck.id, deckName: displayDeckName(deck), cram: true });
     });
 
     const editBtn = document.createElement('button');
     editBtn.type = 'button';
     editBtn.className = 'secondary-btn';
-    editBtn.textContent = 'Edit';
-    editBtn.addEventListener('click', function () {
+    editBtn.textContent = t('edit');
+    editBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
       switchTab('edit', { deckId: deck.id });
     });
 
@@ -1581,26 +1915,9 @@
     const actions = document.createElement('div');
     actions.className = 'browse-row-actions';
 
-    const renameBtn = document.createElement('button');
-    renameBtn.type = 'button';
-    renameBtn.className = 'secondary-btn';
-    renameBtn.textContent = 'Rename';
-    renameBtn.addEventListener('click', async function () {
-      const newName = await openTextPrompt({
-        title: 'Rename daeck',
-        value: deck.name,
-        confirmText: 'Rename',
-        requireNonEmpty: true
-      });
-      if (!newName || !newName.trim()) return;
-      await renameDeck(deck.id, newName.trim());
-      await renderNaistsBrowser();
-    });
-    actions.appendChild(renameBtn);
-
     if (deck.id !== DEFAULT_DECK_ID) {
       const deleteBtn = buildDeleteButton(async function () {
-        if (!confirm('Delete daeck "' + deck.name + '" and all its carbs? This can\'t be undone.')) return;
+        if (!confirm(t('deleteDeckConfirm', { name: displayDeckName(deck) }))) return;
         await deleteDeck(deck.id);
         if (editDeckId === deck.id) editDeckId = null;
         await renderNaistsBrowser();
@@ -1613,12 +1930,19 @@
     body.appendChild(actions);
     row.appendChild(body);
 
+    row.addEventListener('click', function (e) {
+      if (e.target.closest('.drag-handle, .browse-row-primary-actions, .browse-row-actions, button')) return;
+      switchTab('study', { deckId: deck.id, deckName: displayDeckName(deck) });
+    });
+
     return row;
   }
 
   // ---------------- Naists tab: new-deck-with-import overlay ----------------
 
   function bindNewDeckOverlay() {
+    if (els.newDeckOverlay.dataset.bound) return;
+    els.newDeckOverlay.dataset.bound = '1';
     els.newDeckEmptyBtn.addEventListener('click', async function () {
       const name = els.newDeckNameInput.value.trim();
       if (!name) { els.newDeckNameInput.focus(); return; }
@@ -1648,7 +1972,7 @@
           closeNewDeckOverlay();
           switchTab('edit', { deckId: deck.id });
         } catch (err) {
-          els.newDeckStatus.textContent = err.message || 'Import failed.';
+          els.newDeckStatus.textContent = err.message || t('importFailed');
         }
       });
     });
@@ -1671,6 +1995,8 @@
   // ---------------- Stody tab: active session ----------------
 
   function bindStudyTab() {
+    if (els.showAnswerBtn.dataset.bound) return;
+    els.showAnswerBtn.dataset.bound = '1';
     els.showAnswerBtn.addEventListener('click', revealAnswer);
     Array.prototype.slice.call(els.ratingButtons.querySelectorAll('.rating-btn')).forEach(function (btn) {
       btn.addEventListener('click', function () { rateCard(btn.dataset.rating); });
@@ -1685,7 +2011,6 @@
     const cardShell = els.studyCard.querySelector('.card-shell');
     if (cardShell) cardShell.addEventListener('click', onStudyCardClick);
 
-    els.backToDecksBtn.addEventListener('click', function () { endStudySession(); switchTab('naists'); });
     els.emptyBackBtn.addEventListener('click', function () { endStudySession(); switchTab('naists'); });
     els.undoRatingBtn.addEventListener('click', undoLastRating);
     els.studyNoDeckGotoBtn.addEventListener('click', function () { switchTab('naists'); });
@@ -1695,9 +2020,10 @@
   // session is already open, just show it as-is; otherwise resume the
   // last-studied deck; otherwise a friendly empty state pointing at Naists.
   async function showStudyTab() {
-    if (session.activeDeckId) {
+    if (session.activeDeckId || session.activeTag) {
       els.studyNoDeckState.hidden = true;
       els.studySession.hidden = false;
+      updateSessionProgress();
       return;
     }
     const lastId = await getLastStudiedDeckId();
@@ -1711,44 +2037,67 @@
     }
     els.studySession.hidden = true;
     els.studyNoDeckState.hidden = false;
+    hideSessionProgressChip();
   }
 
   function endStudySession() {
     session.activeDeckId = null;
+    session.activeTag = null;
     session.cram = false;
     session.lastAction = null;
     els.undoRatingBtn.hidden = true;
     els.cramModeBadge.hidden = true;
     els.studySession.hidden = true;
+    hideSessionProgressChip();
   }
 
   async function startDeckSession(deckId, deckName, opts) {
     opts = opts || {};
-    session.activeDeckId = deckId;
-    session.activeDeckName = deckName;
+    session.activeDeckId = deckId || null;
+    session.activeTag = opts.tag || null;
+    session.activeDeckName = deckName || (session.activeTag ? '#' + session.activeTag : '');
     session.cram = !!opts.cram;
     session.lastAction = null;
+    session.cardsSinceLastPig = 0;
     els.undoRatingBtn.hidden = true;
     els.cramModeBadge.hidden = !session.cram;
     els.studyNoDeckState.hidden = true;
     els.studySession.hidden = false;
 
-    await setLastStudiedDeckId(deckId);
+    if (deckId) await setLastStudiedDeckId(deckId);
 
     await withLoading(async function () {
       const cards = await getCards();
       session.queue = session.cram
-        ? buildCramQueue(cards, deckId)
-        : buildStudyQueue(cards, Date.now(), deckId);
+        ? buildCramQueue(cards, deckId).filter(function (c) { return cardHasTag(c, session.activeTag); })
+        : buildStudyQueue(cards, Date.now(), deckId, undefined, session.activeTag);
       session.reviewedCount = 0;
-      session.cardsSinceLastPig = 0;
       showNextCard();
     });
   }
 
+  function hideSessionProgressChip() {
+    if (els.sessionProgressChip) els.sessionProgressChip.hidden = true;
+  }
+
   function updateSessionProgress() {
     const left = session.queue.length;
-    els.sessionProgress.textContent = session.activeDeckName + ' · ' + session.reviewedCount + ' reviewed · ' + left + ' left';
+    const reviewed = session.reviewedCount;
+    const name = session.activeDeckName || '';
+    if (!els.sessionProgressChip) return;
+    const onStudy = !!(els.views.study && els.views.study.classList.contains('active'));
+    const live = !!(name && els.studySession && !els.studySession.hidden);
+    els.sessionProgressChip.hidden = !(onStudy && live);
+    if (els.sessionProgressName) els.sessionProgressName.textContent = name;
+    if (els.sessionProgressCounts) {
+      els.sessionProgressCounts.textContent = t('sessionChipCounts', { reviewed: reviewed, left: left });
+    }
+    els.sessionProgressChip.title = t('sessionProgress', {
+      name: name,
+      reviewed: reviewed,
+      left: left
+    });
+    if (els.cramModeBadge) els.cramModeBadge.hidden = !session.cram;
   }
 
   function showNextCard() {
@@ -1758,9 +2107,8 @@
       session.currentCard = null;
       els.studyCard.hidden = true;
       els.emptyState.hidden = false;
-      els.emptyStateText.textContent = (session.cram
-        ? 'No carbs in "' + session.activeDeckName + '" to cram right now'
-        : 'No carbs due in "' + session.activeDeckName + '" right now') +
+      const emptyKey = session.cram ? 'cramEmpty' : 'studyEmpty';
+      els.emptyStateText.textContent = t(emptyKey, { name: session.activeDeckName }) +
         (currentUsername ? ', ' + currentUsername : '') + '.';
       return;
     }
@@ -1787,6 +2135,7 @@
       _setCardImage(els.cardBackImage, null);
       renderOcclusionStudyCard(card, els.cardOcclusionWrap);
       els.cardOcclusionWrap.hidden = false;
+      renderStudyCardTags(card.tags);
       return;
     }
     if (els.cardOcclusionWrap) {
@@ -1798,6 +2147,20 @@
     els.cardBackText.textContent = card.back;
     _setCardImage(els.cardFrontImage, card.frontImage);
     _setCardImage(els.cardBackImage, card.backImage);
+    renderStudyCardTags(card.tags);
+  }
+
+  function renderStudyCardTags(tags) {
+    if (!els.cardTags) return;
+    els.cardTags.innerHTML = '';
+    if (!tags || !tags.length) {
+      els.cardTags.hidden = true;
+      return;
+    }
+    tags.forEach(function (tag) {
+      els.cardTags.appendChild(makeTagChip(tag, false));
+    });
+    els.cardTags.hidden = false;
   }
 
   function _setCardImage(imgEl, dataUri) {
@@ -1853,34 +2216,38 @@
   // intervals (e.g. a brand-new card's Harb step) render as hours/minutes
   // rather than rounding up to a misleading "1d".
   function formatIntervalPreview(days) {
-    if (typeof days !== 'number' || !isFinite(days) || days < 0) return '';
-    if (days === 0) return 'now';
-    if (days < 1) {
-      const hours = days * 24;
+    const n = Number(days);
+    if (!isFinite(n) || n < 0) return '';
+    if (n === 0) return t('intervalNow');
+    if (n < 1) {
+      const hours = n * 24;
       if (hours >= 1) return Math.round(hours) + 'h';
       return Math.max(1, Math.round(hours * 60)) + 'm';
     }
-    if (days < 31) return Math.round(days) + 'd';
-    if (days < 60) return Math.max(1, Math.round(days / 7)) + 'w';
-    if (days < 365) return Math.max(1, Math.round(days / 30)) + 'mo';
-    return Math.max(1, Math.round(days / 365)) + 'y';
+    if (n < 31) return Math.round(n) + 'd';
+    if (n < 60) return Math.max(1, Math.round(n / 7)) + 'w';
+    if (n < 365) return Math.max(1, Math.round(n / 30)) + 'mo';
+    return Math.max(1, Math.round(n / 365)) + 'y';
   }
 
   // Speculatively previews what each rating would produce as a next
   // interval, without persisting anything (scheduleReview is pure).
-  // Skips cram mode, where ratings never actually reschedule the card —
-  // showing a preview there would misleadingly imply otherwise.
   function updateRatingIntervalPreviews() {
     const card = session.currentCard;
     const btns = Array.prototype.slice.call(els.ratingButtons.querySelectorAll('.rating-btn'));
     btns.forEach(function (btn) {
-      const span = btn.querySelector('.rating-interval');
-      if (!span) return;
+      let span = btn.querySelector('.rating-interval');
+      if (!span) {
+        span = document.createElement('span');
+        span.className = 'rating-interval';
+        btn.appendChild(span);
+      }
       span.textContent = '';
-      if (!card || session.cram) return;
+      if (!card) return;
       try {
         const preview = scheduleReview(card, btn.dataset.rating, Date.now());
-        span.textContent = formatIntervalPreview(preview && preview.interval);
+        const days = preview ? preview.interval : null;
+        span.textContent = formatIntervalPreview(days);
       } catch (err) {
         span.textContent = '';
       }
@@ -1918,18 +2285,30 @@
         wasAgain: rating === 'again'
       };
       if (rating === 'again') session.queue.splice(reinsertAt, 0, updated);
+
+      const earned = bucksPerRating(economy.animals);
+      economy.bucks = Math.round((economy.bucks + earned) * 100) / 100;
+      session.lastAction.bucksGranted = earned;
+      await persistEconomy();
     }
 
     session.reviewedCount++;
-    session.cardsSinceLastPig++;
     els.undoRatingBtn.hidden = false;
 
-    if (session.cardsSinceLastPig >= BIGBERT_INTERVAL) {
-      session.cardsSinceLastPig = 0;
-      await showPigEncouragement();
-    } else {
-      showNextCard();
+    if (!session.cram) {
+      const settings = await getSettings();
+      const focusOn = document.documentElement.classList.contains('focus-mode');
+      if (settings.encouragement && !focusOn) {
+        session.cardsSinceLastPig = (session.cardsSinceLastPig || 0) + 1;
+        if (session.cardsSinceLastPig >= ENCOURAGEMENT_INTERVAL) {
+          session.cardsSinceLastPig = 0;
+          if (session.lastAction) session.lastAction.encouragementFired = true;
+          await showPigEncouragement();
+          return;
+        }
+      }
     }
+    showNextCard();
   }
 
   async function undoLastRating() {
@@ -1953,10 +2332,18 @@
     if (!action.cram) {
       await updateCard(action.originalCard.id, action.originalCard);
       await deleteReviewLogEntry(action.logEntryId);
+      if (action.bucksGranted) {
+        economy.bucks = Math.max(0, Math.round((economy.bucks - action.bucksGranted) * 100) / 100);
+        await persistEconomy();
+      }
     }
 
     session.reviewedCount = Math.max(0, session.reviewedCount - 1);
-    session.cardsSinceLastPig = Math.max(0, session.cardsSinceLastPig - 1);
+    if (!action.cram) {
+      session.cardsSinceLastPig = action.encouragementFired
+        ? ENCOURAGEMENT_INTERVAL - 1
+        : Math.max(0, (session.cardsSinceLastPig || 0) - 1);
+    }
     session.currentCard = action.originalCard;
     session.lastAction = null;
     els.undoRatingBtn.hidden = true;
@@ -1977,87 +2364,57 @@
     updateRatingIntervalPreviews();
   }
 
-  // ---------------- pig encouragement ----------------
-
   let _pigOverlayArmed = false;
   let _pigOverlayTimer = null;
 
   function bindPigOverlay() {
-    // Keyboard/Enter activation of the continue button (mouse presses are
-    // already covered by the document-level mousedown listener below).
-    els.pigOverlayContinue.addEventListener('click', function () { dismissPigEncouragement(); });
+    if (!els.pigOverlay || els.pigOverlay.dataset.bound) return;
+    els.pigOverlay.dataset.bound = '1';
+    if (els.pigOverlayContinue) {
+      els.pigOverlayContinue.addEventListener('click', function () { dismissPigEncouragement(); });
+    }
   }
 
   function _onPigOverlayMouseDown() {
     dismissPigEncouragement();
-    // Swallow the trailing click from this same press so it doesn't land on
-    // the freshly-revealed next card (which would otherwise reveal/advance).
     document.addEventListener('click', function eat(ev) {
       ev.stopPropagation();
       document.removeEventListener('click', eat, true);
     }, true);
   }
 
-  // Single, idempotent teardown — guarded so the timer and a mouse press
-  // (or multiple presses) can't each advance the session.
   function dismissPigEncouragement() {
     if (!_pigOverlayArmed) return;
     _pigOverlayArmed = false;
     if (_pigOverlayTimer) { clearTimeout(_pigOverlayTimer); _pigOverlayTimer = null; }
     document.removeEventListener('mousedown', _onPigOverlayMouseDown, true);
-    els.pigOverlay.hidden = true;
-    els.pigOverlay.classList.remove('star-event');
-    els.pigStarBadge.hidden = true;
+    if (els.pigOverlay) {
+      els.pigOverlay.hidden = true;
+      els.pigOverlay.classList.remove('star-event');
+    }
     showNextCard();
   }
 
-  // A collection of 100 pigs converts into a star: the pig count resets to
-  // 1 and starCount goes up, celebrated with a fancier overlay state instead
-  // of the usual encouragement.
-  function getStarCelebrationText(starCount) {
-    const name = currentUsername && currentUsername.trim() ? currentUsername.trim() : 'friend';
-    return starCount === 1
-      ? name + ', you earned your first star! 100 pigs collected and counting.'
-      : name + ', star #' + starCount + '! That is another 100 pigs in the books.';
-  }
-
   async function showPigEncouragement() {
-    const earningStar = pigState.totalPigs + 1 >= 100;
-    const photoPath = await getRandomPhotoPath();
-    els.pigOverlayImg.src = photoPath;
-
-    if (earningStar) {
-      pigState.starCount = (pigState.starCount || 0) + 1;
-      pigState.totalPigs = 1;
-      await savePigState(pigState);
-      updatePigCountDisplay();
-      updateStarCountDisplay();
-      await initScatteredPigs(els.pigField, pigState.totalPigs);
-
-      els.pigOverlay.classList.add('star-event');
-      els.pigStarBadge.hidden = false;
-      els.pigOverlayText.textContent = getStarCelebrationText(pigState.starCount);
-    } else {
-      els.pigOverlay.classList.remove('star-event');
-      els.pigStarBadge.hidden = true;
-      els.pigOverlayText.textContent = getRandomEncouragement(currentUsername);
-
-      pigState.totalPigs += 1;
-      await savePigState(pigState);
-      updatePigCountDisplay();
-      addScatterPig(els.pigField, pigState.totalPigs).catch(function () {});
+    if (!els.pigOverlay) {
+      showNextCard();
+      return;
     }
-
+    try {
+      els.pigOverlayImg.src = await getRandomPhotoPath();
+    } catch (err) {
+      els.pigOverlayImg.removeAttribute('src');
+    }
+    els.pigOverlayImg.alt = t('pigs');
+    els.pigOverlayText.textContent = getRandomEncouragement(currentUsername);
+    if (els.pigOverlayContinue) els.pigOverlayContinue.textContent = t('studyingContinue');
     els.pigOverlay.hidden = false;
-    // Dismiss on ANY mouse press anywhere, or automatically after 3s —
-    // whichever comes first. Armed here (not in bindPigOverlay) so the
-    // listener/timer only live while the overlay is actually up.
     _pigOverlayArmed = true;
     document.addEventListener('mousedown', _onPigOverlayMouseDown, true);
     _pigOverlayTimer = setTimeout(dismissPigEncouragement, 3000);
   }
 
-  // ---------------- Edit Daeck tab ----------------
+  // ---------------- Edit Deck tab ----------------
 
   function _dtHasFiles(dt) {
     if (!dt || !dt.types) return false;
@@ -2177,7 +2534,7 @@
       if (file) attachFile(file);
     });
     previewEl.addEventListener('click', function () { inputEl.click(); });
-    previewEl.title = 'Replace image';
+    previewEl.title = t('replaceImage');
     removeEl.addEventListener('click', function () {
       _setAttachedPreview(previewEl, removeEl, null);
       onChange(null);
@@ -2196,6 +2553,8 @@
   }
 
   function bindEditView() {
+    if (els.addCardBtn.dataset.bound) return;
+    els.addCardBtn.dataset.bound = '1';
     els.editNoDeckGotoBtn.addEventListener('click', function () { switchTab('naists'); });
 
     els.editDeckRenameBtn.addEventListener('click', async function () {
@@ -2204,9 +2563,9 @@
       const deck = decks.find(function (d) { return d.id === editDeckId; });
       if (!deck) return;
       const newName = await openTextPrompt({
-        title: 'Rename daeck',
+        title: t('renameDeck'),
         value: deck.name,
-        confirmText: 'Rename',
+        confirmText: t('rename'),
         requireNonEmpty: true
       });
       if (!newName || !newName.trim()) return;
@@ -2219,7 +2578,7 @@
       const decks = await getDecks();
       const deck = decks.find(function (d) { return d.id === editDeckId; });
       if (!deck) return;
-      if (!confirm('Delete daeck "' + deck.name + '" and all its carbs? This can\'t be undone.')) return;
+      if (!confirm(t('deleteDeckConfirm', { name: displayDeckName(deck) }))) return;
       await deleteDeck(deck.id);
       editDeckId = null;
       switchTab('naists');
@@ -2239,6 +2598,15 @@
     bindImageAttach(els.addBack, els.addBackImageInput, els.addBackImagePreview, els.addBackImageRemove, function (dataUri) {
       addBackImageDataUri = dataUri;
     });
+    renderTagInput(els.addCardTags, addFormTags, function (next) { addFormTags = next; });
+    renderTagInput(els.occlusionCardTags, occlusionFormTags, function (next) { occlusionFormTags = next; });
+    window.getAddFormTags = function () { return occlusionFormTags.slice(); };
+    window.onOcclusionCardAdded = async function () {
+      occlusionFormTags = [];
+      renderTagInput(els.occlusionCardTags, occlusionFormTags, function (next) { occlusionFormTags = next; });
+      await refreshKnownTags();
+      await renderEditDeck();
+    };
   }
 
   async function submitNewCard() {
@@ -2249,16 +2617,19 @@
       return;
     }
     if (!editDeckId) return;
-    await addCard(front, back, editDeckId, addFrontImageDataUri, addBackImageDataUri);
+    await addCard(front, back, editDeckId, addFrontImageDataUri, addBackImageDataUri, addFormTags.slice());
     els.addFront.value = '';
     els.addBack.value = '';
+    addFormTags = [];
     resetAddImageControls();
+    renderTagInput(els.addCardTags, addFormTags, function (next) { addFormTags = next; });
     els.addFront.focus();
+    await refreshKnownTags();
     await renderEditDeck();
 
     const original = els.addCardBtn.textContent;
-    els.addCardBtn.textContent = 'Added!';
-    setTimeout(function () { els.addCardBtn.textContent = original; }, 900);
+    els.addCardBtn.textContent = t('added');
+    setTimeout(function () { els.addCardBtn.textContent = t('addCard'); }, 900);
   }
 
   // Opening the Edit Daeck tab directly (tab-bar click): show whatever deck
@@ -2299,12 +2670,12 @@
     renderBreadcrumb(els.editDeckBreadcrumb, naists, deck.naistId, function (naistId) {
       browseNaistId = naistId;
       switchTab('naists');
-    }, deck.name);
+    }, displayDeckName(deck));
 
-    els.editDeckTitle.textContent = deck.name;
+    els.editDeckTitle.textContent = displayDeckName(deck);
     const deckCards = cards.filter(function (c) { return c.deckId === deck.id; });
     const dueCount = deckCards.filter(function (c) { return isDue(c, Date.now()); }).length;
-    els.editDeckCounts.textContent = dueCount + ' due · ' + deckCards.length + ' total';
+    els.editDeckCounts.textContent = t('editCounts', { due: dueCount, total: deckCards.length });
 
     els.editDeckDeleteBtn.disabled = deck.id === DEFAULT_DECK_ID;
 
@@ -2315,16 +2686,14 @@
     const query = els.editDeckSearch.value.trim().toLowerCase();
     let filtered = deckCards;
     if (query) {
-      filtered = filtered.filter(function (c) {
-        return c.front.toLowerCase().indexOf(query) !== -1 || c.back.toLowerCase().indexOf(query) !== -1;
-      });
+      filtered = filtered.filter(function (c) { return cardMatchesSearch(c, query); });
     }
 
     els.editDeckCardList.innerHTML = '';
     if (filtered.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'list-empty';
-      empty.textContent = deckCards.length === 0 ? 'No carbs yet — add your first one above.' : 'No carbs match.';
+      empty.textContent = deckCards.length === 0 ? t('noCardsInDeck') : t('noCardsMatch');
       els.editDeckCardList.appendChild(empty);
       return;
     }
@@ -2378,12 +2747,13 @@
       const occlusionActions = document.createElement('div');
       occlusionActions.className = 'card-row-actions';
       const occlusionDeleteBtn = buildDeleteButton(async function () {
-        if (!confirm('Delete this occlusion carb?')) return;
+        if (!confirm(t('deleteOcclusionConfirm'))) return;
         await deleteCard(card.id);
         if (opts.onChanged) opts.onChanged();
       });
       occlusionActions.appendChild(occlusionDeleteBtn);
 
+      appendTagChips(text, card.tags);
       row.appendChild(text);
       row.appendChild(occlusionActions);
       return row;
@@ -2412,6 +2782,7 @@
     line.appendChild(sep);
     line.appendChild(backEl);
     text.appendChild(line);
+    appendTagChips(text, card.tags);
 
     const actions = document.createElement('div');
     actions.className = 'card-row-actions';
@@ -2419,11 +2790,11 @@
     const editBtn = document.createElement('button');
     editBtn.type = 'button';
     editBtn.className = 'secondary-btn';
-    editBtn.textContent = 'Edit';
+    editBtn.textContent = t('edit');
     editBtn.addEventListener('click', function () { enterCardEditMode(row, card, opts.onChanged); });
 
     const deleteBtn = buildDeleteButton(async function () {
-      if (!confirm('Delete this carb?\n\n"' + truncate(card.front, 60) + '"')) return;
+      if (!confirm(t('deleteCardConfirm') + '\n\n"' + truncate(card.front, 60) + '"')) return;
       await deleteCard(card.id);
       if (opts.onChanged) opts.onChanged();
     });
@@ -2455,7 +2826,7 @@
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.className = 'secondary-btn';
-    removeBtn.textContent = 'Remove image';
+    removeBtn.textContent = t('removeImage');
 
     wrap.appendChild(input);
     wrap.appendChild(preview);
@@ -2474,15 +2845,20 @@
 
     const frontTa = document.createElement('textarea');
     frontTa.value = card.front;
-    frontTa.placeholder = 'Front';
-    frontTa.title = 'Drop or paste an image';
+    frontTa.placeholder = t('front');
+    frontTa.title = t('dropImage');
     const frontImageCtl = _buildEditImageControl(frontImage, function (v) { frontImage = v; }, frontTa);
 
     const backTa = document.createElement('textarea');
     backTa.value = card.back;
-    backTa.placeholder = 'Baeck';
-    backTa.title = 'Drop or paste an image';
+    backTa.placeholder = t('back');
+    backTa.title = t('dropImage');
     const backImageCtl = _buildEditImageControl(backImage, function (v) { backImage = v; }, backTa);
+
+    let tags = (card.tags || []).slice();
+    const tagWrap = document.createElement('div');
+    tagWrap.className = 'tag-input';
+    renderTagInput(tagWrap, tags, function (next) { tags = next; });
 
     const actions = document.createElement('div');
     actions.className = 'card-row-actions';
@@ -2490,19 +2866,20 @@
     const saveBtn = document.createElement('button');
     saveBtn.type = 'button';
     saveBtn.className = 'secondary-btn';
-    saveBtn.textContent = 'Save';
+    saveBtn.textContent = t('save');
     saveBtn.addEventListener('click', async function () {
       const front = frontTa.value.trim();
       const back = backTa.value.trim();
       if (!front || !back) return;
-      await updateCard(card.id, { front: front, back: back, frontImage: frontImage, backImage: backImage });
+      await updateCard(card.id, { front: front, back: back, frontImage: frontImage, backImage: backImage, tags: tags });
+      await refreshKnownTags();
       if (onChanged) onChanged();
     });
 
     const cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
     cancelBtn.className = 'secondary-btn';
-    cancelBtn.textContent = 'Cancel';
+    cancelBtn.textContent = t('cancel');
     cancelBtn.addEventListener('click', function () { if (onChanged) onChanged(); });
 
     actions.appendChild(saveBtn);
@@ -2511,11 +2888,439 @@
     row.appendChild(frontImageCtl);
     row.appendChild(backTa);
     row.appendChild(backImageCtl);
+    row.appendChild(tagWrap);
     row.appendChild(actions);
+  }
+
+  const TAG_TONES = 10;
+  function tagToneIndex(name) {
+    let h = 2166136261;
+    const s = String(name || '').toLowerCase();
+    for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+    return (h >>> 0) % TAG_TONES;
+  }
+  function makeTagChip(name, removable, onRemove) {
+    const chip = document.createElement('span');
+    chip.className = 'tag-chip';
+    chip.dataset.tone = String(tagToneIndex(name));
+    chip.appendChild(document.createTextNode(name));
+    if (removable) {
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.textContent = '×';
+      x.setAttribute('aria-label', t('delete'));
+      x.addEventListener('click', function () { if (onRemove) onRemove(); });
+      chip.appendChild(x);
+    }
+    return chip;
+  }
+
+  function appendTagChips(parent, tags) {
+    if (!tags || !tags.length) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'card-row-tags';
+    tags.forEach(function (tag) {
+      wrap.appendChild(makeTagChip(tag, false));
+    });
+    parent.appendChild(wrap);
+  }
+
+  function renderTagInput(container, tags, onChange) {
+    if (!container) return;
+    container.innerHTML = '';
+    container.classList.add('tag-input');
+    const current = (tags || []).slice();
+
+    function commit(next) {
+      onChange(next);
+      renderTagInput(container, next, onChange);
+    }
+
+    current.forEach(function (tag) {
+      container.appendChild(makeTagChip(tag, true, function () {
+        commit(current.filter(function (t) { return t !== tag; }));
+      }));
+    });
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = t('tagsPlaceholder');
+    input.setAttribute('aria-label', t('tags'));
+    container.appendChild(input);
+
+    const suggest = document.createElement('div');
+    suggest.className = 'tag-suggest';
+    suggest.hidden = true;
+    container.appendChild(suggest);
+
+    function addTag(raw) {
+      const value = String(raw || '').replace(/^#/, '').trim();
+      if (!value) return;
+      if (current.some(function (t) { return t.toLowerCase() === value.toLowerCase(); })) {
+        input.value = '';
+        suggest.hidden = true;
+        return;
+      }
+      rememberTag(value);
+      commit(current.concat([value]));
+    }
+
+    function showSuggest() {
+      const q = input.value.trim().toLowerCase();
+      const opts = knownTags.filter(function (tag) {
+        if (current.some(function (c) { return c.toLowerCase() === tag.toLowerCase(); })) return false;
+        return !q || tag.toLowerCase().indexOf(q) !== -1;
+      }).slice(0, 8);
+      suggest.innerHTML = '';
+      opts.forEach(function (tag) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'tag-suggest-item';
+        btn.appendChild(makeTagChip(tag, false));
+        btn.addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          addTag(tag);
+        });
+        suggest.appendChild(btn);
+      });
+      const typed = input.value.replace(/^#/, '').trim();
+      const exact = typed && knownTags.some(function (tag) { return tag.toLowerCase() === typed.toLowerCase(); });
+      if (typed && !exact) {
+        const create = document.createElement('button');
+        create.type = 'button';
+        create.className = 'tag-suggest-create';
+        create.textContent = t('createTag', { name: typed });
+        create.addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          addTag(typed);
+        });
+        suggest.appendChild(create);
+      }
+      suggest.hidden = suggest.childNodes.length === 0;
+    }
+
+    input.addEventListener('input', showSuggest);
+    input.addEventListener('focus', showSuggest);
+    input.addEventListener('blur', function () { setTimeout(function () { suggest.hidden = true; }, 120); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        addTag(input.value);
+      } else if (e.key === 'Backspace' && !input.value && current.length) {
+        commit(current.slice(0, -1));
+      }
+    });
   }
 
   function truncate(str, n) {
     return str.length > n ? str.slice(0, n - 1) + '…' : str;
+  }
+
+  function speciesLabel(id) {
+    return t(id);
+  }
+
+  function bindStoreView() {
+  }
+
+  async function renderStore() {
+    updateBucksDisplay();
+    const active = els.tabBtns.find(function (b) { return b.classList.contains('active'); });
+    applySellMode(sellModeForTab(active ? active.dataset.tab : 'store'));
+
+    els.storeAnimalList.innerHTML = '';
+    ANIMAL_SHOP.forEach(function (spec) {
+      const owned = (economy.animals[spec.id] || 0);
+      const price = buyPrice(spec.id, owned);
+      const row = document.createElement('div');
+      row.className = 'store-row';
+      const thumb = document.createElement('div');
+      thumb.className = 'store-thumb';
+      const img = document.createElement('img');
+      img.src = ANIMAL_THUMBS[spec.id] || '';
+      img.alt = '';
+      thumb.appendChild(img);
+      const info = document.createElement('div');
+      info.className = 'store-row-info';
+      const name = document.createElement('div');
+      name.className = 'store-row-name';
+      name.textContent = speciesLabel(spec.id);
+      const meta = document.createElement('div');
+      meta.className = 'store-row-meta';
+      meta.textContent = owned + ' ' + t('owned') + ' · ' + formatCurrency(price);
+      info.appendChild(name);
+      info.appendChild(meta);
+      const actions = document.createElement('div');
+      actions.className = 'store-row-actions';
+      const buy = document.createElement('button');
+      buy.type = 'button';
+      buy.className = 'secondary-btn';
+      buy.textContent = t('buy');
+      buy.disabled = economy.bucks < price;
+      buy.title = economy.bucks < price ? t('notEnoughBucks') : '';
+      buy.addEventListener('click', function () { buyAnimal(spec.id); });
+      actions.appendChild(buy);
+      row.appendChild(thumb);
+      row.appendChild(info);
+      row.appendChild(actions);
+      els.storeAnimalList.appendChild(row);
+    });
+
+    if (els.storeFarmList) {
+      els.storeFarmList.innerHTML = '';
+      const penCount = (economy.pens || []).length;
+      const troughCount = (economy.troughs || []).length;
+      const samplePen = penPriceForSize(8, 14);
+      const troughPrice = troughBuyPrice();
+
+      function farmRow(name, meta, onBuy, disabled) {
+        const row = document.createElement('div');
+        row.className = 'store-row';
+        const info = document.createElement('div');
+        info.className = 'store-row-info';
+        const title = document.createElement('div');
+        title.className = 'store-row-name';
+        title.textContent = name;
+        const m = document.createElement('div');
+        m.className = 'store-row-meta';
+        m.textContent = meta;
+        info.appendChild(title);
+        info.appendChild(m);
+        const actions = document.createElement('div');
+        actions.className = 'store-row-actions';
+        const buy = document.createElement('button');
+        buy.type = 'button';
+        buy.className = 'secondary-btn';
+        buy.textContent = t('buy');
+        buy.disabled = !!disabled;
+        buy.title = disabled ? t('notEnoughBucks') : '';
+        buy.addEventListener('click', onBuy);
+        actions.appendChild(buy);
+        row.appendChild(info);
+        row.appendChild(actions);
+        els.storeFarmList.appendChild(row);
+      }
+      farmRow(
+        t('pen'),
+        t('penMeta', { n: penCount, price: formatCurrency(samplePen) }),
+        function () { buyPen(); },
+        economy.bucks < samplePen * 0.25
+      );
+      farmRow(
+        t('trough'),
+        t('troughMeta', { n: troughCount, price: formatCurrency(troughPrice) }),
+        function () { buyTrough(); },
+        economy.bucks < troughPrice
+      );
+    }
+
+    els.storeBgList.innerHTML = '';
+    STORE_BACKGROUNDS.forEach(function (bg) {
+      const unlocked = (economy.unlockedBackgrounds || []).indexOf(bg.id) !== -1;
+      const row = document.createElement('div');
+      row.className = 'store-row';
+      const thumb = document.createElement('div');
+      thumb.className = 'store-thumb store-thumb-swatch';
+      if (bg.swatchImage) {
+        thumb.style.backgroundImage = 'url("' + bg.swatchImage + '")';
+      } else {
+        thumb.style.background = bg.swatch;
+      }
+      const info = document.createElement('div');
+      info.className = 'store-row-info';
+      const name = document.createElement('div');
+      name.className = 'store-row-name';
+      name.textContent = t(bg.nameKey);
+      const meta = document.createElement('div');
+      meta.className = 'store-row-meta';
+      meta.textContent = unlocked ? t('unlocked') : formatCurrency(bg.price);
+      info.appendChild(name);
+      info.appendChild(meta);
+      const actions = document.createElement('div');
+      actions.className = 'store-row-actions';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'secondary-btn';
+      btn.textContent = unlocked ? t('unlocked') : t('unlock');
+      btn.disabled = unlocked || economy.bucks < bg.price;
+      btn.addEventListener('click', function () { buyBackground(bg.id); });
+      actions.appendChild(btn);
+      row.appendChild(thumb);
+      row.appendChild(info);
+      row.appendChild(actions);
+      els.storeBgList.appendChild(row);
+    });
+  }
+
+  async function buyAnimal(speciesId) {
+    const owned = economy.animals[speciesId] || 0;
+    const price = buyPrice(speciesId, owned);
+    if (economy.bucks < price) return;
+    economy.bucks = Math.round((economy.bucks - price) * 100) / 100;
+    economy.animals[speciesId] = owned + 1;
+    await persistEconomy();
+    addScatterAnimal(els.pigField, speciesId, economy.animals[speciesId]).catch(function () {});
+    await renderStore();
+  }
+
+  async function buyPen() {
+    if (isCompactLayout()) switchTab('farm');
+    startPenPlacement({
+      banner: (isCompactLayout() || document.documentElement.classList.contains('farm-tab'))
+        ? t('placePenFarm')
+        : t('placePen'),
+      priceFn: penPriceForSize,
+      formatPrice: function (p) { return formatCurrency(p); },
+      onConfirm: async function (payload) {
+        if (economy.bucks < payload.paid) return;
+        economy.bucks = Math.round((economy.bucks - payload.paid) * 100) / 100;
+        payload.id = generateId();
+        economy.pens = (economy.pens || []).concat([payload]);
+        await persistEconomy();
+        renderPensAndTroughs(els.pigField);
+        await renderStore();
+      }
+    });
+  }
+
+  async function buyTrough() {
+    const price = troughBuyPrice();
+    if (economy.bucks < price) return;
+    economy.bucks = Math.round((economy.bucks - price) * 100) / 100;
+    const trough = { id: generateId(), paid: price };
+    await persistEconomy();
+    addTroughAtDefault(els.pigField, trough);
+    await persistEconomy();
+    await renderStore();
+    if (isCompactLayout()) switchTab('farm');
+  }
+
+  async function sellPen(penId) {
+    const pen = (economy.pens || []).find(function (p) { return p.id === penId; });
+    if (!pen) return;
+    const refund = Math.round((pen.paid || 0) * 0.5 * 100) / 100;
+    economy.bucks = Math.round((economy.bucks + refund) * 100) / 100;
+    removePen(els.pigField, penId);
+    await persistEconomy();
+    await renderStore();
+  }
+
+  async function sellTrough(troughId) {
+    const tr = (economy.troughs || []).find(function (p) { return p.id === troughId; });
+    if (!tr) return;
+    const refund = Math.round((tr.paid || 0) * 0.5 * 100) / 100;
+    economy.bucks = Math.round((economy.bucks + refund) * 100) / 100;
+    removeTrough(els.pigField, troughId);
+    await persistEconomy();
+    await renderStore();
+  }
+
+  async function buyBackground(id) {
+    const bg = STORE_BACKGROUNDS.find(function (b) { return b.id === id; });
+    if (!bg) return;
+    if ((economy.unlockedBackgrounds || []).indexOf(id) !== -1) return;
+    if (economy.bucks < bg.price) return;
+    economy.bucks = Math.round((economy.bucks - bg.price) * 100) / 100;
+    economy.unlockedBackgrounds = (economy.unlockedBackgrounds || []).concat([id]);
+    await persistEconomy();
+    await renderStore();
+  }
+
+  async function sellAnimalInstance(speciesId, instanceId) {
+    const owned = economy.animals[speciesId] || 0;
+    if (owned < 1) return;
+    const refund = sellPrice(speciesId, owned);
+    economy.animals[speciesId] = owned - 1;
+    economy.bucks = Math.round((economy.bucks + refund) * 100) / 100;
+    await persistEconomy();
+    removeScatterAnimal(els.pigField, speciesId, instanceId);
+    const active = els.tabBtns.find(function (b) { return b.classList.contains('active'); });
+    if (active && active.dataset.tab === 'store') await renderStore();
+  }
+
+  let _sellTip = null;
+  function hideSellTip() {
+    if (_sellTip) _sellTip.hidden = true;
+  }
+  function positionSellTip(clientX, clientY) {
+    if (!_sellTip || _sellTip.hidden) return;
+    const pad = 12;
+    const tw = _sellTip.offsetWidth || 80;
+    const th = _sellTip.offsetHeight || 24;
+    let x = clientX + pad;
+    let y = clientY + pad;
+    if (x + tw > window.innerWidth - 8) x = clientX - tw - pad;
+    if (x < 8) x = 8;
+    if (y + th > window.innerHeight - 8) y = clientY - th - pad;
+    if (y < 8) y = 8;
+    _sellTip.style.left = x + 'px';
+    _sellTip.style.top = y + 'px';
+  }
+  function bindAnimalSell() {
+    if (!els.pigField || els.pigField.dataset.sellBound) return;
+    els.pigField.dataset.sellBound = '1';
+
+    els.pigField.addEventListener('mouseover', function (e) {
+      if (!els.pigField.classList.contains('sell-mode')) return;
+      const img = e.target.closest && e.target.closest('.animal-scatter');
+      const penEl = e.target.closest && e.target.closest('.pen-fence');
+      const troughEl = e.target.closest && e.target.closest('.trough-object');
+      let text = '';
+      if (img) {
+        const owned = economy.animals[img.dataset.species] || 0;
+        text = t('sellPrice', { price: formatCurrency(sellPrice(img.dataset.species, owned)) });
+      } else if (penEl) {
+        const pen = (economy.pens || []).find(function (p) { return p.id === penEl.dataset.penId; });
+        text = t('sellPen', { price: formatCurrency(Math.round((pen && pen.paid || 0) * 0.5 * 100) / 100) });
+      } else if (troughEl) {
+        const tr = (economy.troughs || []).find(function (p) { return p.id === troughEl.dataset.id; });
+        text = t('sellTrough', { price: formatCurrency(Math.round((tr && tr.paid || 0) * 0.5 * 100) / 100) });
+      } else {
+        return;
+      }
+      if (!_sellTip) {
+        _sellTip = document.createElement('div');
+        _sellTip.className = 'animal-sell-tip';
+        document.body.appendChild(_sellTip);
+      }
+      _sellTip.textContent = text;
+      _sellTip.hidden = false;
+      positionSellTip(e.clientX, e.clientY);
+    });
+    els.pigField.addEventListener('mousemove', function (e) {
+      if (!_sellTip || _sellTip.hidden) return;
+      positionSellTip(e.clientX, e.clientY);
+    });
+    els.pigField.addEventListener('mouseout', function (e) {
+      const hit = e.target.closest && e.target.closest('.animal-scatter, .pen-fence, .trough-object');
+      if (!hit) return;
+      if (e.relatedTarget && hit.contains(e.relatedTarget)) return;
+      hideSellTip();
+    });
+    els.pigField.addEventListener('click', function (e) {
+      if (!els.pigField.classList.contains('sell-mode')) return;
+      if (window.StudyFieldGestureMoved) return;
+      const img = e.target.closest && e.target.closest('.animal-scatter');
+      const penEl = e.target.closest && e.target.closest('.pen-fence');
+      const troughEl = e.target.closest && e.target.closest('.trough-object');
+      if (img) {
+        e.preventDefault();
+        sellAnimalInstance(img.dataset.species, img.dataset.instanceId);
+        hideSellTip();
+        return;
+      }
+      if (penEl) {
+        e.preventDefault();
+        sellPen(penEl.dataset.penId);
+        hideSellTip();
+        return;
+      }
+      if (troughEl) {
+        e.preventDefault();
+        sellTrough(troughEl.dataset.id);
+        hideSellTip();
+      }
+    });
   }
 
   // ---------------- stats ----------------
@@ -2542,7 +3347,7 @@
   }
 
   function statsDayLabel(dateStr, isToday) {
-    if (isToday) return 'Today';
+    if (isToday) return t('today');
     const d = new Date(dateStr + 'T00:00:00');
     return d.toLocaleDateString(undefined, { weekday: 'short' });
   }
@@ -2555,12 +3360,12 @@
     const dueNow = cards.filter(function (c) { return isDue(c, now); }).length;
 
     const tiles = [
-      { label: 'Total reviewbs', value: totalReviews },
-      { label: 'Retaintion (30d)', value: retention30.total > 0 ? Math.round(retention30.retentionRate * 100) + '%' : '—' },
-      { label: 'Day streagb', value: streak },
-      { label: 'Stodied today', value: studiedToday },
-      { label: 'Carbs due nowb', value: dueNow },
-      { label: 'Total carbs', value: cards.length }
+      { label: t('totalReviews'), value: totalReviews },
+      { label: t('retention30'), value: retention30.total > 0 ? Math.round(retention30.retentionRate * 100) + '%' : '—' },
+      { label: t('dayStreak'), value: streak },
+      { label: t('studiedToday'), value: studiedToday },
+      { label: t('cardsDueNow'), value: dueNow },
+      { label: t('totalCards'), value: cards.length }
     ];
 
     els.statsTiles.innerHTML = '';
@@ -2616,7 +3421,7 @@
     if (!breakdown.length) {
       const empty = document.createElement('div');
       empty.className = 'stats-empty';
-      empty.textContent = 'No daecks yet.';
+      empty.textContent = t('noDecksYet');
       els.statsDeckBreakdown.appendChild(empty);
       return;
     }
@@ -2627,7 +3432,9 @@
 
       const name = document.createElement('span');
       name.className = 'stats-deck-row-name';
-      name.textContent = d.deckName;
+      name.textContent = (d.deckId === DEFAULT_DECK_ID && (d.deckName === 'General' || d.deckName === 'Gaineral'))
+        ? t('defaultDeck')
+        : d.deckName;
 
       const metrics = document.createElement('span');
       metrics.className = 'stats-deck-row-metrics';
@@ -2640,10 +3447,10 @@
         span.appendChild(document.createTextNode(label));
         metrics.appendChild(span);
       }
-      metric('total', d.totalCards);
-      metric('due', d.dueNow);
-      metric('reviewbs (30d)', d.reviews);
-      metric('retaintion (30d)', d.retentionRate !== null ? Math.round(d.retentionRate * 100) + '%' : '—');
+      metric(t('total'), d.totalCards);
+      metric(t('due'), d.dueNow);
+      metric(t('reviews30'), d.reviews);
+      metric(t('retention30short'), d.retentionRate !== null ? Math.round(d.retentionRate * 100) + '%' : '—');
 
       row.appendChild(name);
       row.appendChild(metrics);
@@ -2654,11 +3461,16 @@
   // ---------------- keyboard shortcuts help ----------------
 
   function bindShortcutsOverlay() {
+    if (els.shortcutsOverlay.dataset.bound) return;
+    els.shortcutsOverlay.dataset.bound = '1';
     els.shortcutsBtn.addEventListener('click', function () {
       els.shortcutsOverlay.hidden = !els.shortcutsOverlay.hidden;
     });
     els.shortcutsCloseBtn.addEventListener('click', function () {
       els.shortcutsOverlay.hidden = true;
+    });
+    els.shortcutsOverlay.addEventListener('mousedown', function (e) {
+      if (e.target === els.shortcutsOverlay) els.shortcutsOverlay.hidden = true;
     });
   }
 
@@ -2671,9 +3483,13 @@
 
       // '?' toggles the shortcuts help panel from almost anywhere.
       if (!typing && (e.key === '?' || (e.shiftKey && e.key === '/'))) {
-        if (els.pigOverlay && !els.pigOverlay.hidden) return;
         e.preventDefault();
         els.shortcutsOverlay.hidden = !els.shortcutsOverlay.hidden;
+        return;
+      }
+      if (e.key === 'Escape' && els.pigOverlay && !els.pigOverlay.hidden) {
+        e.preventDefault();
+        dismissPigEncouragement();
         return;
       }
       if (e.key === 'Escape' && els.shortcutsOverlay && !els.shortcutsOverlay.hidden) {
@@ -2682,8 +3498,8 @@
       }
 
       if (typing) return;
+      if (els.pigOverlay && !els.pigOverlay.hidden) return;
       if (!els.shortcutsOverlay.hidden) return;
-      if (!els.pigOverlay.hidden) return;
       if (!els.views.study.classList.contains('active')) return;
       if (els.studySession.hidden) return;
 

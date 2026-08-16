@@ -30,7 +30,8 @@ function createCard(front, back, deckId, now, frontImage, backImage, extra) {
     repetition: 0,
     easeFactor: 2.5,
     dueDate: now,
-    lastReviewed: null
+    lastReviewed: null,
+    tags: Array.isArray(extra.tags) ? extra.tags.filter(function (x) { return typeof x === 'string' && x.trim(); }).map(function (x) { return x.trim(); }) : []
   };
   if (card.type === 'occlusion') {
     card.image = extra.image || null;
@@ -84,9 +85,17 @@ function _shuffle(arr) {
 // `limit`, if a positive number, caps the queue size (Anki-style per-session
 // card cap) — applied *after* shuffling so the cards shown are a random
 // sample of what's due, not just the first N in storage order.
-function buildStudyQueue(cards, now, deckId, limit) {
+function cardHasTag(card, tag) {
+  if (!tag) return true;
+  const needle = String(tag).replace(/^#/, '').trim().toLowerCase();
+  if (!needle) return true;
+  const tags = Array.isArray(card.tags) ? card.tags : [];
+  return tags.some(function (x) { return String(x).toLowerCase() === needle; });
+}
+
+function buildStudyQueue(cards, now, deckId, limit, tag) {
   const due = cards.filter(function (c) {
-    return isDue(c, now) && (!deckId || c.deckId === deckId);
+    return isDue(c, now) && (!deckId || c.deckId === deckId) && cardHasTag(c, tag);
   });
   _shuffle(due);
   if (typeof limit === 'number' && limit > 0 && due.length > limit) {
@@ -108,7 +117,12 @@ function buildCramQueue(cards, deckId) {
 // Simplified SM-2-family scheduler, in the spirit of Anki's classic algorithm.
 function scheduleReview(card, rating, now) {
   now = now || Date.now();
-  let { repetition, easeFactor, interval } = card;
+  let repetition = Number(card.repetition);
+  if (!isFinite(repetition) || repetition < 0) repetition = 0;
+  let easeFactor = Number(card.easeFactor);
+  if (!isFinite(easeFactor) || easeFactor < 1.3) easeFactor = 2.5;
+  let interval = Number(card.interval);
+  if (!isFinite(interval) || interval < 0) interval = 0;
 
   if (rating === 'again') {
     repetition = 0;

@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Hool's Carbs</title>
-<meta name="description" content="A flashcard study app with spaced repetition, decks, and Anki import.">
+<title>Study Farm</title>
+<meta name="description" content="Study Farm — a flashcard study app with spaced repetition, decks, and Anki import.">
 
 <link rel="icon" type="image/x-icon" href="resources/favicon.ico">
 <link rel="apple-touch-icon" href="resources/favicon-180.png">
@@ -38,11 +38,11 @@
   <div id="auth-screen" hidden>
     <div class="auth-card">
       <img class="auth-mascot" src="resources/pigs/mascot-knorrig.png" alt="" aria-hidden="true">
-      <h1>Hool's Carbs</h1>
-      <p>Who ainters?</p>
+      <h1 data-i18n="appTitle">Study Farm</h1>
+      <p data-i18n="whoEnters">Who enters?</p>
       <div class="auth-form" id="auth-local-form" hidden>
-        <input id="username-input" type="text" placeholder="What should we call you?" autocomplete="off">
-        <button id="username-submit">Gobing</button>
+        <input id="username-input" type="text" data-i18n-placeholder="namePlaceholder" placeholder="What should we call you?" autocomplete="off">
+        <button id="username-submit" data-i18n="go">Go</button>
       </div>
 
       <!-- Shown instead of the local-username form only once a real Firebase
@@ -67,15 +67,15 @@
   <!-- ===================== MAIN APP ===================== -->
   <div id="app" hidden>
     <header id="top-nav">
-      <div id="brand">
-        <img id="brand-mascot" src="resources/pigs/mascot-knorrig.png" alt="Hool's Carbs">
-        <span id="brand-title">Hool's Carbs</span>
-        <span id="user-greeting"></span>
-        <span id="pig-count-display"></span>
-        <span id="star-count-display" class="star-count-badge" hidden>
-          <svg class="star-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-          <span id="star-count-value">0</span>
-        </span>
+      <div id="top-nav-inner">
+        <div id="brand">
+          <img id="brand-mascot" src="resources/pigs/mascot-knorrig.png" alt="">
+          <h1 id="app-title" data-i18n="appTitle">Study Farm</h1>
+          <span id="user-greeting"></span>
+        </div>
+        <div id="bucks-display" aria-live="polite">
+          <span id="bucks-value">$0.00</span>
+        </div>
       </div>
     </header>
 
@@ -83,77 +83,79 @@
          settings gear + ? help button are right-aligned within the same
          centered content column. -->
     <div id="tab-row">
+      <div id="session-progress-chip" hidden>
+        <span id="session-progress-name"></span>
+        <span id="session-progress-counts"></span>
+        <span id="cram-mode-badge" class="mode-badge cram" hidden data-i18n="cram">Cram</span>
+      </div>
       <nav id="tab-nav">
-        <button class="tab-btn" data-tab="study" title="Stody" aria-label="Stody">
+        <button class="tab-btn" data-tab="study" data-i18n-title="study" data-i18n-aria="study" title="Study" aria-label="Study">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M8 11h8M8 14.5h5"/></svg>
         </button>
-        <button class="tab-btn active" data-tab="naists" title="Naists" aria-label="Naists">
+        <button class="tab-btn active" data-tab="naists" data-i18n-title="nests" data-i18n-aria="nests" title="Nests" aria-label="Nests">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13c0 3.5 4 6 9 6s9-2.5 9-6"/><path d="M3 13c1.5-1.3 3-1.3 4.5 0M16.5 13c1.5-1.3 3-1.3 4.5 0"/><ellipse cx="10" cy="13.1" rx="1.6" ry="1.9"/><ellipse cx="14" cy="13.4" rx="1.6" ry="1.9"/></svg>
         </button>
-        <button class="tab-btn" data-tab="edit" title="Edit Daeck" aria-label="Edit Daeck">
+        <button class="tab-btn" data-tab="edit" data-i18n-title="editDeck" data-i18n-aria="editDeck" title="Edit Deck" aria-label="Edit Deck">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="12" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg>
         </button>
-        <button class="tab-btn" data-tab="stats" title="Staets" aria-label="Staets">
+        <button class="tab-btn" data-tab="stats" data-i18n-title="stats" data-i18n-aria="stats" title="Stats" aria-label="Stats">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M7 20v-6M12 20v-10M17 20v-4"/></svg>
         </button>
-        <button class="tab-btn" data-tab="pigs" title="Bigberts" aria-label="Bigberts">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.2 10.2 6.4 5 11.2 8.2z"/><path d="M15.8 10.2 17.6 5 12.8 8.2z"/><ellipse cx="12" cy="14.4" rx="7.4" ry="5.8"/><ellipse cx="12" cy="16.3" rx="3.3" ry="2.3"/><path d="M10.7 16.3h.02M13.3 16.3h.02"/><path d="M9.3 12.4h.02M14.7 12.4h.02"/><path d="M4.5 14.4c-1.7 0-1.6-2.2.5-1.8"/></svg>
+        <button class="tab-btn" data-tab="farm" data-i18n-title="farm" data-i18n-aria="farm" title="Farm" aria-label="Farm">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V7M12 20V5M19 20V7"/><path d="M4 10h16M4 14.5h16"/></svg>
+        </button>
+        <button class="tab-btn" data-tab="store" data-i18n-title="store" data-i18n-aria="store" title="Store" aria-label="Store">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8h12l-1.1 12H7.1L6 8z"/><path d="M9 8V6.2A3 3 0 0 1 15 6.2V8"/><path d="M9 12h6"/></svg>
         </button>
       </nav>
       <div id="tab-row-tools">
-        <button id="settings-btn" class="icon-btn" type="button" title="Saettings" aria-label="Saettings">
+        <button id="focus-btn" class="icon-btn" type="button" data-i18n-title="focus" data-i18n-aria="focus" title="Focus" aria-label="Focus" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+        </button>
+        <button id="settings-btn" class="icon-btn" type="button" data-i18n-title="settings" data-i18n-aria="settings" title="Settings" aria-label="Settings">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
-        <button id="shortcuts-btn" class="icon-btn" type="button" title="Keyboarb shortcots" aria-label="Keyboarb shortcots">?</button>
+        <button id="shortcuts-btn" class="icon-btn" type="button" data-i18n-title="shortcuts" data-i18n-aria="shortcuts" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">?</button>
       </div>
     </div>
 
     <main id="main-content">
 
-      <!-- NAISTS VIEW — unified filesystem-style naist/deck browser -->
+      <!-- NESTS VIEW — unified filesystem-style nest/deck browser -->
       <section id="view-naists" class="view active">
         <div id="naists-panel">
-          <h2 class="view-title">Naists</h2>
+          <h2 class="view-title" data-i18n="nests">Nests</h2>
           <div id="naists-breadcrumb" class="breadcrumb-trail"></div>
 
-          <input id="naists-search" class="search-field" type="text" placeholder="Search all carbs...">
+          <input id="naists-search" class="search-field" type="text" data-i18n-placeholder="searchCards" placeholder="Search all cards...">
 
           <div id="naists-list"></div>
 
           <div class="deck-select-row">
-            <button id="new-naist-btn" class="secondary-btn" type="button">+ New naist</button>
-            <button id="new-deck-btn" class="secondary-btn" type="button">+ New daeck</button>
-            <button id="import-deck-btn" class="secondary-btn" type="button">+ Import daeck</button>
+            <button id="new-naist-btn" class="secondary-btn" type="button" data-i18n="newNest">+ New nest</button>
+            <button id="new-deck-btn" class="secondary-btn" type="button" data-i18n="newDeck">+ New deck</button>
+            <button id="import-deck-btn" class="secondary-btn" type="button" data-i18n="importDeck">+ Import deck</button>
             <input id="import-deck-input" type="file" accept=".apkg,.txt,.csv" hidden>
           </div>
         </div>
       </section>
 
-      <!-- STODY VIEW — the active study-session flow, unchanged internally.
+      <!-- STUDY VIEW — the active study-session flow.
            Defaults to resuming the last-studied deck when opened from the
-           tab bar directly; a deck row's "Stody"/"Cram" button forces a
+           tab bar directly; a deck row's Study/Cram button forces a
            specific deck via switchTab('study', { deckId, deckName, cram }). -->
       <section id="view-study" class="view">
         <div id="study-no-deck-state" class="tab-empty-state">
-          <h2>No daeck picked yet</h2>
-          <p>Choob one in Naists to start studying.</p>
-          <button id="study-no-deck-goto-btn" class="secondary-btn">Go to Naists</button>
+          <h2 data-i18n="noDeckYet">No deck picked yet</h2>
+          <p data-i18n="choobStudy">Choose one in Nests to start studying.</p>
+          <button id="study-no-deck-goto-btn" class="secondary-btn" data-i18n="goToNests">Go to Nests</button>
         </div>
 
         <div id="study-session" hidden>
-          <div id="study-session-header">
-            <button id="back-to-decks-btn" class="secondary-btn">&larr; Daecks</button>
-            <div id="session-progress"></div>
-            <div id="study-session-header-right">
-              <span id="cram-mode-badge" class="mode-badge cram" hidden>Cram</span>
-              <button id="undo-rating-btn" class="secondary-btn" type="button" hidden>Undo</button>
-            </div>
-          </div>
-
           <div id="empty-state" hidden>
-            <h2>All caught op</h2>
+            <h2 data-i18n="allCaughtUp">All caught up</h2>
             <p></p>
-            <button id="empty-back-btn" class="secondary-btn">Baeck to daecks</button>
+            <button id="empty-back-btn" class="secondary-btn" data-i18n="goToNests">Go to Nests</button>
           </div>
 
           <div id="study-card" hidden>
@@ -167,26 +169,30 @@
                 <img id="card-back-image" class="card-image" hidden alt="">
                 <div id="card-back-text"></div>
               </div>
+              <div id="card-tags" class="card-tag-row" hidden></div>
             </div>
-            <button id="show-answer-btn">Show Answer</button>
-            <div id="rating-buttons" hidden>
-              <button class="rating-btn rating-again" data-rating="again">Agaen<span class="rating-interval"></span></button>
-              <button class="rating-btn rating-hard" data-rating="hard">Harb<span class="rating-interval"></span></button>
-              <button class="rating-btn rating-good" data-rating="good">Gob<span class="rating-interval"></span></button>
-              <button class="rating-btn rating-easy" data-rating="easy">Eaby<span class="rating-interval"></span></button>
+            <div id="study-actions">
+              <button id="undo-rating-btn" class="secondary-btn" type="button" hidden data-i18n="undo">Undo</button>
+              <button id="show-answer-btn" data-i18n="showAnswer">Show Answer</button>
+              <div id="rating-buttons" hidden>
+                <button class="rating-btn rating-again" data-rating="again"><span class="rating-btn-label" data-i18n="again">Again</span><span class="rating-interval"></span></button>
+                <button class="rating-btn rating-hard" data-rating="hard"><span class="rating-btn-label" data-i18n="hard">Hard</span><span class="rating-interval"></span></button>
+                <button class="rating-btn rating-good" data-rating="good"><span class="rating-btn-label" data-i18n="good">Good</span><span class="rating-interval"></span></button>
+                <button class="rating-btn rating-easy" data-rating="easy"><span class="rating-btn-label" data-i18n="easy">Easy</span><span class="rating-interval"></span></button>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- EDIT DAECK VIEW — add-card area (basic + image occlusion) and this
+      <!-- EDIT DECK VIEW — add-card area (basic + image occlusion) and this
            deck's card list, scoped to whichever deck is currently open for
            editing (module state in app.js, not a URL/tab param). -->
       <section id="view-edit" class="view">
         <div id="edit-no-deck-state" class="tab-empty-state">
-          <h2>No daeck picked yet</h2>
-          <p>Choob a daeck in Naists, then hit Edit.</p>
-          <button id="edit-no-deck-goto-btn" class="secondary-btn">Go to Naists</button>
+          <h2 data-i18n="noDeckYet">No deck picked yet</h2>
+          <p data-i18n="choobEdit">Choose a deck in Nests, then hit Edit.</p>
+          <button id="edit-no-deck-goto-btn" class="secondary-btn" data-i18n="goToNests">Go to Nests</button>
         </div>
 
         <div id="edit-deck-panel" hidden>
@@ -198,57 +204,59 @@
           </div>
 
           <div id="edit-deck-actions">
-            <button id="edit-deck-rename-btn" class="secondary-btn">Rename</button>
-            <button id="edit-deck-delete-btn" class="icon-action-btn delete-btn" type="button" title="Delete" aria-label="Delete">
+            <button id="edit-deck-rename-btn" class="secondary-btn" data-i18n="rename">Rename</button>
+            <button id="edit-deck-delete-btn" class="icon-action-btn delete-btn" type="button" data-i18n-title="delete" data-i18n-aria="delete" title="Delete" aria-label="Delete">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13M10 11v6M14 11v6"/></svg>
             </button>
           </div>
 
           <div class="panel add-panel">
-            <h3 class="panel-subtitle">Add a carb</h3>
+            <h3 class="panel-subtitle" data-i18n="addACard">Add a card</h3>
 
             <div class="add-mode-row">
-              <button id="add-mode-basic-btn" class="secondary-btn active" type="button">Basic card</button>
-              <button id="add-mode-occlusion-btn" class="secondary-btn" type="button">+ Image occlusion card</button>
+              <button id="add-mode-basic-btn" class="secondary-btn active" type="button" data-i18n="basicCard">Basic card</button>
+              <button id="add-mode-occlusion-btn" class="secondary-btn" type="button" data-i18n="occlusionCard">+ Image occlusion card</button>
             </div>
 
             <div class="add-form" id="basic-add-form">
               <div class="field-with-image">
-                <textarea id="add-front" placeholder="Front" title="Drop or paste an image"></textarea>
+                <textarea id="add-front" data-i18n-placeholder="front" data-i18n-title="dropImage" placeholder="Front" title="Drop or paste an image"></textarea>
                 <input id="add-front-image" type="file" accept="image/*" hidden>
                 <div class="image-attach" hidden>
                   <img id="add-front-image-preview" class="image-preview" alt="">
-                  <button id="add-front-image-remove" class="secondary-btn" type="button">Remove image</button>
+                  <button id="add-front-image-remove" class="secondary-btn" type="button" data-i18n="removeImage">Remove image</button>
                 </div>
               </div>
               <div class="field-with-image">
-                <textarea id="add-back" placeholder="Baeck" title="Drop or paste an image"></textarea>
+                <textarea id="add-back" data-i18n-placeholder="back" data-i18n-title="dropImage" placeholder="Back" title="Drop or paste an image"></textarea>
                 <input id="add-back-image" type="file" accept="image/*" hidden>
                 <div class="image-attach" hidden>
                   <img id="add-back-image-preview" class="image-preview" alt="">
-                  <button id="add-back-image-remove" class="secondary-btn" type="button">Remove image</button>
+                  <button id="add-back-image-remove" class="secondary-btn" type="button" data-i18n="removeImage">Remove image</button>
                 </div>
               </div>
-              <button id="add-card-btn">Add Carb</button>
+              <div id="add-card-tags" class="tag-input" data-for="add"></div>
+              <button id="add-card-btn" data-i18n="addCard">Add Card</button>
             </div>
 
             <div class="add-form occlusion-add-form" id="occlusion-add-form" hidden>
               <div class="occlusion-upload-row">
                 <input id="occlusion-image-input" type="file" accept="image/*" hidden>
-                <button id="occlusion-image-btn" class="secondary-btn" type="button">Upload image</button>
-                <span class="occlusion-hint">Click and drag on the image to draw a mask over the answer. Add as many as you like.</span>
+                <button id="occlusion-image-btn" class="secondary-btn" type="button" data-i18n="uploadImage">Upload image</button>
+                <span class="occlusion-hint" data-i18n="occlusionHint">Click and drag on the image to draw a mask over the answer. Add as many as you like.</span>
               </div>
               <div id="occlusion-editor-wrap" hidden>
                 <img id="occlusion-editor-image" alt="">
               </div>
-              <div id="occlusion-region-count" class="occlusion-region-count">No regions yet — click and drag on the image to draw one.</div>
-              <button id="occlusion-save-btn" disabled>Add card</button>
+              <div id="occlusion-region-count" class="occlusion-region-count" data-i18n="noRegions">No regions yet — click and drag on the image to draw one.</div>
+              <div id="occlusion-card-tags" class="tag-input" data-for="occlusion"></div>
+              <button id="occlusion-save-btn" data-i18n="addOcclusion" disabled>Add card</button>
             </div>
           </div>
 
           <div class="panel">
-            <h3 class="panel-subtitle">Carbs in this daeck</h3>
-            <input id="edit-deck-search" class="search-field" type="text" placeholder="Search carbs...">
+            <h3 class="panel-subtitle" data-i18n="cardsInDeck">Cards in this deck</h3>
+            <input id="edit-deck-search" class="search-field" type="text" data-i18n-placeholder="searchCardsInDeck" placeholder="Search cards...">
             <div id="edit-deck-card-list"></div>
           </div>
         </div>
@@ -257,134 +265,173 @@
       <!-- STATS VIEW -->
       <section id="view-stats" class="view">
         <div class="panel stats-panel">
-          <h2 class="view-title">Staets &amp; prograiss</h2>
+          <h2 class="view-title" data-i18n="statsTitle">Stats &amp; progress</h2>
 
           <div id="stats-tiles" class="stats-tiles"></div>
 
-          <h3 class="panel-subtitle">Reviewbs, last 14 daybs</h3>
+          <h3 class="panel-subtitle" data-i18n="reviewsLast14">Reviews, last 14 days</h3>
           <div id="stats-activity-chart" class="stats-chart"></div>
 
-          <h3 class="panel-subtitle">Due forecaebst, next 7 daybs</h3>
+          <h3 class="panel-subtitle" data-i18n="dueForecast">Due forecast, next 7 days</h3>
           <div id="stats-forecast-chart" class="stats-chart"></div>
 
-          <h3 class="panel-subtitle">By daeck</h3>
+          <h3 class="panel-subtitle" data-i18n="byDeck">By deck</h3>
           <div id="stats-deck-breakdown"></div>
         </div>
       </section>
 
-      <!-- PIGS VIEW — deliberately empty & transparent. It's just a window
-           onto the accumulated scattered pig sprites (#pig-field) sitting
-           behind the app, so nothing opaque covers them here. -->
-      <section id="view-pigs" class="view"></section>
+      <!-- FARM VIEW — full-bleed field on compact screens (and a clear
+           field workspace on desktop). Sprites live in #pig-field; this
+           view stays empty so the pasture shows through. -->
+      <section id="view-farm" class="view">
+        <p id="farm-tab-hint" class="farm-tab-hint">
+          <span data-i18n="farmHint">Drag to arrange. Buy in Store.</span>
+          <span class="farm-hint-sell" data-i18n="farmHintSell">Tap an animal, pen, or trough here to sell.</span>
+        </p>
+      </section>
+
+      <!-- STORE VIEW — buy/sell animals and unlock background cosmetics -->
+      <section id="view-store" class="view">
+        <div class="panel store-panel">
+          <div class="store-header">
+            <h2 class="view-title" data-i18n="storeTitle">Store</h2>
+          </div>
+          <h3 class="panel-subtitle" data-i18n="storeAnimals">Animals</h3>
+          <div id="store-animal-list" class="store-list"></div>
+          <h3 class="panel-subtitle" data-i18n="storeFarm">Farm</h3>
+          <p class="store-hint" data-i18n="troughHint">A trough only helps animals that share a pen with it.</p>
+          <div id="store-farm-list" class="store-list"></div>
+          <h3 class="panel-subtitle" data-i18n="storeBackgrounds">Backgrounds</h3>
+          <div id="store-bg-list" class="store-list"></div>
+        </div>
+      </section>
 
     </main>
   </div>
 
-  <!-- scattered pig sprites, placed randomly across the page's whitespace -->
+  <!-- scattered animal sprites, placed in the side gutters -->
   <div id="pig-field" aria-hidden="true"></div>
+  <div id="farm-split-gap" hidden aria-hidden="true"></div>
+  <div id="field-place-layer" hidden>
+    <div id="field-place-banner"></div>
+    <div id="pen-preview" hidden></div>
+    <div id="field-place-price" hidden></div>
+  </div>
 
   <!-- ===================== OVERLAYS ===================== -->
   <div id="pig-encouragement-overlay" hidden>
     <div class="overlay-card">
-      <div id="pig-star-badge" class="star-badge" hidden aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-      </div>
-      <img id="pig-encouragement-img" alt="A bigbert">
+      <img id="pig-encouragement-img" alt="">
       <div id="pig-encouragement-text"></div>
-      <button id="pig-encouragement-continue">Stodying</button>
+      <button id="pig-encouragement-continue" type="button" data-i18n="studyingContinue">Keep studying</button>
     </div>
   </div>
 
   <div id="shortcuts-overlay" hidden>
     <div class="overlay-card shortcuts-card">
-      <h2>Keyboarb shortcots</h2>
+      <h2 data-i18n="shortcuts">Keyboard shortcuts</h2>
       <div id="shortcuts-list">
-        <div class="shortcut-row"><kbd>Spabe</kbd><span class="shortcut-desc">Show answer</span></div>
-        <div class="shortcut-row"><kbd>Tab</kbd><span class="shortcut-desc">Show answer (same as Space)</span></div>
-        <div class="shortcut-row"><kbd>1</kbd><span class="shortcut-desc">Rate Agaen</span></div>
-        <div class="shortcut-row"><kbd>2</kbd><span class="shortcut-desc">Rate Harb</span></div>
-        <div class="shortcut-row"><kbd>3</kbd><span class="shortcut-desc">Rate Gob</span></div>
-        <div class="shortcut-row"><kbd>4</kbd><span class="shortcut-desc">Rate Eaby</span></div>
-        <div class="shortcut-row"><kbd>U</kbd><span class="shortcut-desc">Undo</span></div>
-        <div class="shortcut-row"><kbd>?</kbd><span class="shortcut-desc">Togbolt</span></div>
-        <div class="shortcut-row"><span class="shortcut-keys"><kbd>&#8984;/Ctrl</kbd> + <kbd>Enter</kbd></span><span class="shortcut-desc">Add carb (while typing)</span></div>
+        <div class="shortcut-row"><kbd>Space</kbd><span class="shortcut-desc" data-i18n="shortcutShow">Show answer</span></div>
+        <div class="shortcut-row"><kbd>Tab</kbd><span class="shortcut-desc" data-i18n="shortcutShowSame">Show answer (same as Space)</span></div>
+        <div class="shortcut-row"><kbd>1</kbd><span class="shortcut-desc" data-i18n="shortcutAgain">Rate Again</span></div>
+        <div class="shortcut-row"><kbd>2</kbd><span class="shortcut-desc" data-i18n="shortcutHard">Rate Hard</span></div>
+        <div class="shortcut-row"><kbd>3</kbd><span class="shortcut-desc" data-i18n="shortcutGood">Rate Good</span></div>
+        <div class="shortcut-row"><kbd>4</kbd><span class="shortcut-desc" data-i18n="shortcutEasy">Rate Easy</span></div>
+        <div class="shortcut-row"><kbd>U</kbd><span class="shortcut-desc" data-i18n="shortcutUndo">Undo</span></div>
+        <div class="shortcut-row"><kbd>?</kbd><span class="shortcut-desc" data-i18n="shortcutToggle">Toggle</span></div>
+        <div class="shortcut-row"><span class="shortcut-keys"><kbd>&#8984;/Ctrl</kbd> + <kbd>Enter</kbd></span><span class="shortcut-desc" data-i18n="shortcutAdd">Add card (while typing)</span></div>
       </div>
-      <button id="shortcuts-close-btn" class="secondary-btn">Close</button>
+      <button id="shortcuts-close-btn" class="secondary-btn" data-i18n="close">Close</button>
     </div>
   </div>
 
   <div id="new-deck-overlay" hidden>
     <div class="overlay-card new-deck-card">
-      <h2>New daeck</h2>
-      <input id="new-deck-name-input" type="text" placeholder="Daeck name">
+      <h2 data-i18n="newDeckTitle">New deck</h2>
+      <input id="new-deck-name-input" type="text" data-i18n-placeholder="deckName" placeholder="Deck name">
       <div id="new-deck-status" class="import-status-text"></div>
       <div class="new-deck-options">
-        <button id="new-deck-empty-btn" class="secondary-btn" type="button">Start empty</button>
-        <button id="new-deck-anki-btn" class="secondary-btn" type="button">Imporb Anki daeck (.apkg/.txt/.csv)</button>
+        <button id="new-deck-empty-btn" class="secondary-btn" type="button" data-i18n="startEmpty">Start empty</button>
+        <button id="new-deck-anki-btn" class="secondary-btn" type="button" data-i18n="importAnki">Import Anki deck (.apkg/.txt/.csv)</button>
       </div>
       <input id="new-deck-anki-input" type="file" accept=".apkg,.txt,.csv" hidden>
-      <button id="new-deck-cancel-btn" class="secondary-btn">Cancel</button>
+      <button id="new-deck-cancel-btn" class="secondary-btn" data-i18n="cancel">Cancel</button>
     </div>
   </div>
 
-  <!-- Generic in-app text prompt (replaces window.prompt for New naist,
-       rename naist/daeck, and the "Your nameb:" nickname flow). Driven by
+  <!-- Generic in-app text prompt (replaces window.prompt for New nest,
+       rename nest/deck, and the nickname flow). Driven by
        openTextPrompt() in app.js. -->
   <div id="text-prompt-overlay" hidden>
     <div class="overlay-card text-prompt-card">
-      <h2 id="text-prompt-title">Naemb</h2>
+      <h2 id="text-prompt-title" data-i18n="name">Name</h2>
       <input id="text-prompt-input" type="text" autocomplete="off">
       <div class="text-prompt-actions">
-        <button id="text-prompt-cancel" class="secondary-btn" type="button">Cancel</button>
-        <button id="text-prompt-confirm" class="primary-btn" type="button">OK</button>
+        <button id="text-prompt-cancel" class="secondary-btn" type="button" data-i18n="cancel">Cancel</button>
+        <button id="text-prompt-confirm" class="primary-btn" type="button" data-i18n="ok">OK</button>
       </div>
     </div>
   </div>
 
-  <!-- Settings overlay: nickname, foreground (accent) + background themes,
+  <!-- Settings overlay: nickname, appearance, themes, vocab, focus,
        custom background image, and (cloud only) sign out. -->
   <div id="settings-overlay" hidden>
     <div class="overlay-card settings-card">
-      <h2>Saettings</h2>
+      <h2 data-i18n="settings">Settings</h2>
 
       <div class="settings-section">
-        <h3 class="settings-label">Your nameb</h3>
+        <h3 class="settings-label" data-i18n="yourName">Your name</h3>
         <div class="settings-nickname-row">
           <span id="settings-nickname-value" class="settings-nickname-value"></span>
-          <button id="settings-nickname-btn" class="secondary-btn" type="button">Change</button>
+          <button id="settings-nickname-btn" class="secondary-btn" type="button" data-i18n="change">Change</button>
+        </div>
+      </div>
+
+      <div class="settings-section settings-toggle-row">
+        <h3 class="settings-label" data-i18n="translate">Translate</h3>
+        <button id="settings-vocab-toggle" class="switch" type="button" role="switch" aria-checked="false" data-i18n-aria="translate"></button>
+      </div>
+
+      <div class="settings-section settings-toggle-row">
+        <h3 class="settings-label" data-i18n="focusMode">Focus mode</h3>
+        <button id="settings-focus-toggle" class="switch" type="button" role="switch" aria-checked="false" data-i18n-aria="focusMode"></button>
+      </div>
+
+      <div class="settings-section settings-toggle-row">
+        <h3 class="settings-label" data-i18n="encouragement">Encouragement</h3>
+        <button id="settings-encouragement-toggle" class="switch" type="button" role="switch" aria-checked="false" data-i18n-aria="encouragement"></button>
+      </div>
+
+      <div class="settings-section">
+        <h3 class="settings-label" data-i18n="appearance">Appearance</h3>
+        <div id="settings-theme-row" class="settings-theme-row" role="radiogroup" data-i18n-aria="appearance" aria-label="Appearance">
+          <button type="button" class="secondary-btn" data-theme-choice="light" data-i18n="light">Light</button>
+          <button type="button" class="secondary-btn" data-theme-choice="dark" data-i18n="dark">Dark</button>
+          <button type="button" class="secondary-btn" data-theme-choice="system" data-i18n="system">System</button>
         </div>
       </div>
 
       <div class="settings-section">
-        <h3 class="settings-label">Appearanbce</h3>
-        <div id="settings-theme-row" class="settings-theme-row" role="radiogroup" aria-label="Appearanbce">
-          <button type="button" class="secondary-btn" data-theme-choice="light">Light</button>
-          <button type="button" class="secondary-btn" data-theme-choice="dark">Dark</button>
-          <button type="button" class="secondary-btn" data-theme-choice="system">System</button>
-        </div>
-      </div>
-
-      <div class="settings-section">
-        <h3 class="settings-label">Foregrounb</h3>
+        <h3 class="settings-label" data-i18n="foreground">Foreground</h3>
         <div id="settings-accent-swatches" class="swatch-grid"></div>
       </div>
 
       <div class="settings-section">
-        <h3 class="settings-label">Backgrounb</h3>
+        <h3 class="settings-label" data-i18n="background">Background</h3>
         <div id="settings-bg-swatches" class="swatch-grid"></div>
         <div class="settings-bg-image-row">
           <input id="settings-bg-image-input" type="file" accept="image/*" hidden>
-          <button id="settings-bg-image-btn" class="secondary-btn" type="button">Upload imaebg</button>
-          <button id="settings-bg-image-clear" class="secondary-btn" type="button" hidden>Remove imaebg</button>
+          <button id="settings-bg-image-btn" class="secondary-btn" type="button" data-i18n="uploadImageBtn">Upload image</button>
+          <button id="settings-bg-image-clear" class="secondary-btn" type="button" hidden data-i18n="removeImageBtn">Remove image</button>
         </div>
         <div id="settings-bg-status" class="settings-status"></div>
       </div>
 
       <div class="settings-section" id="settings-signout-section" hidden>
-        <button id="settings-signout-btn" class="secondary-btn danger-btn" type="button">Sign out</button>
+        <button id="settings-signout-btn" class="secondary-btn danger-btn" type="button" data-i18n="signOut">Sign out</button>
       </div>
 
-      <button id="settings-close-btn" class="secondary-btn" type="button">Close</button>
+      <button id="settings-close-btn" class="secondary-btn" type="button" data-i18n="close">Close</button>
     </div>
   </div>
 
@@ -392,6 +439,7 @@
     <img id="spinner-img" class="pig-spinner" alt="Loading">
   </div>
 
+<script src="js/i18n.js"></script>
 <script src="js/storage.js"></script>
 <script src="js/srs.js"></script>
 <script src="js/stats.js"></script>

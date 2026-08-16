@@ -67,7 +67,7 @@ async function setupCloudStore() {
     if (s && s.KEYS) return Object.values(s.KEYS);
     return [
       'study_cards_v1', 'study_decks_v1', 'study_naists_v1', 'study_settings_v1',
-      'study_pigs_v1', 'study_username_v1', 'study_review_log_v1', 'study_last_deck_v1'
+      'study_pigs_v1', 'study_economy_v1', 'study_username_v1', 'study_review_log_v1', 'study_last_deck_v1'
     ];
   }
 

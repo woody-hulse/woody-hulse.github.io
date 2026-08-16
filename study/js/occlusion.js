@@ -241,8 +241,10 @@ function revealAllOcclusionMasks(container) {
     });
 
     els.regionCount.textContent = regions.length === 0
-      ? 'No regions yet — click and drag on the image to draw one.'
-      : regions.length + ' region' + (regions.length === 1 ? '' : 's');
+      ? ((typeof t === 'function') ? t('noRegions') : 'No regions yet — click and drag on the image to draw one.')
+      : (regions.length === 1
+        ? ((typeof t === 'function') ? t('oneRegion') : '1 region')
+        : ((typeof t === 'function') ? t('nRegions', { n: regions.length }) : (regions.length + ' regions')));
   }
 
   async function onSave() {
@@ -255,11 +257,15 @@ function revealAllOcclusionMasks(container) {
 
     els.saveBtn.disabled = true;
     try {
-      await addOcclusionCard(els.editorImage.src, regions, deckId);
+      const tags = (typeof window.getAddFormTags === 'function') ? window.getAddFormTags() : [];
+      await addOcclusionCard(els.editorImage.src, regions, deckId, tags);
       resetEditor();
+      if (typeof window.onOcclusionCardAdded === 'function') window.onOcclusionCardAdded();
       const original = els.saveBtn.textContent;
-      els.saveBtn.textContent = 'Added!';
-      setTimeout(function () { els.saveBtn.textContent = original; }, 900);
+      els.saveBtn.textContent = (typeof t === 'function') ? t('added') : 'Added!';
+      setTimeout(function () {
+        els.saveBtn.textContent = (typeof t === 'function') ? t('addOcclusion') : original;
+      }, 900);
     } finally {
       updateSaveState();
     }

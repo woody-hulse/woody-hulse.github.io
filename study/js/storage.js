@@ -28,9 +28,24 @@ const DEFAULT_SETTINGS = {
   backgroundPreset: 'paper',
   accentPreset: 'raspberry',
   backgroundImage: null,
-  theme: 'system'
+  theme: 'system',
+  funSpellings: false,
+  focusMode: false,
+  encouragement: false,
+  tagVocab: []
 };
 const DEFAULT_PIG_STATE = { totalPigs: 1, starCount: 0 };
+const ANIMAL_SPECIES = ['chickens', 'sheep', 'ducks', 'retrievers', 'pigs', 'fish'];
+const DEFAULT_ECONOMY = {
+  bucks: 0,
+  animals: { chickens: 0, sheep: 0, ducks: 0, retrievers: 0, pigs: 0, fish: 0 },
+  unlockedBackgrounds: [],
+  animalPlacements: {},
+  pens: [],
+  troughs: [],
+  economyV2: true
+};
+const STUDY_ECONOMY_KEY = 'study_economy_v1';
 const REVIEW_LOG_MAX_ENTRIES = 5000;
 
 // ---- pluggable backend (string get/set/remove, synchronous) --------------
@@ -65,11 +80,10 @@ async function getDecks() {
   const list = Array.isArray(decks) ? decks : [];
   const defaultIndex = list.findIndex(function (d) { return d.id === DEFAULT_DECK_ID; });
   if (defaultIndex === -1) {
-    list.unshift({ id: DEFAULT_DECK_ID, name: 'Gaineral', createdAt: Date.now() });
+    list.unshift({ id: DEFAULT_DECK_ID, name: 'General', createdAt: Date.now() });
     writeJSON(STUDY_DECKS_KEY, list);
-  } else if (list[defaultIndex].name === 'General') {
-    // rename an already-persisted pre-rename default deck in place
-    list[defaultIndex] = Object.assign({}, list[defaultIndex], { name: 'Gaineral' });
+  } else if (list[defaultIndex].name === 'Gaineral') {
+    list[defaultIndex] = Object.assign({}, list[defaultIndex], { name: 'General' });
     writeJSON(STUDY_DECKS_KEY, list);
   }
   return list;
@@ -210,6 +224,7 @@ async function getCards() {
   list.forEach(function (c) {
     if (!c.deckId) { c.deckId = DEFAULT_DECK_ID; migrated = true; }
     if (!c.type) { c.type = 'basic'; migrated = true; }
+    if (!Array.isArray(c.tags)) { c.tags = []; migrated = true; }
   });
   if (migrated) writeJSON(STUDY_CARDS_KEY, list);
   return list;
@@ -220,9 +235,9 @@ async function saveCards(cards) {
   return cards;
 }
 
-async function addCard(front, back, deckId, frontImage, backImage) {
+async function addCard(front, back, deckId, frontImage, backImage, tags) {
   const cards = await getCards();
-  const card = createCard(front, back, deckId, undefined, frontImage, backImage);
+  const card = createCard(front, back, deckId, undefined, frontImage, backImage, { tags: tags });
   cards.push(card);
   await saveCards(cards);
   return card;
@@ -234,7 +249,12 @@ async function addCards(cardsArray, deckId) {
     // Preserve image-occlusion fields on round-trip (e.g. re-importing a
     // previously-exported JSON file) without affecting plain Anki-style
     // imports, which never set c.type and so always land as 'basic'.
-    const extra = c.type === 'occlusion' ? { type: 'occlusion', image: c.image, regions: c.regions } : undefined;
+    const extra = { tags: Array.isArray(c.tags) ? c.tags : [] };
+    if (c.type === 'occlusion') {
+      extra.type = 'occlusion';
+      extra.image = c.image;
+      extra.regions = c.regions;
+    }
     return createCard(c.front, c.back, c.deckId || deckId, undefined, c.frontImage, c.backImage, extra);
   });
   const merged = cards.concat(newCards);
@@ -244,12 +264,13 @@ async function addCards(cardsArray, deckId) {
 
 // Image-occlusion cards don't go through addCard's front/back-text shape —
 // they're built directly from an image + a set of rectangular mask regions.
-async function addOcclusionCard(image, regions, deckId) {
+async function addOcclusionCard(image, regions, deckId, tags) {
   const cards = await getCards();
   const card = createCard('[Image occlusion]', '', deckId, undefined, null, null, {
     type: 'occlusion',
     image: image,
-    regions: regions
+    regions: regions,
+    tags: tags
   });
   cards.push(card);
   await saveCards(cards);
@@ -274,7 +295,13 @@ async function deleteCard(id) {
 
 async function getSettings() {
   const stored = readJSON(STUDY_SETTINGS_KEY, {});
-  return Object.assign({}, DEFAULT_SETTINGS, stored);
+  const settings = Object.assign({}, DEFAULT_SETTINGS, stored && typeof stored === 'object' ? stored : {});
+  delete settings.sellAnimals;
+  if (!Array.isArray(settings.tagVocab)) settings.tagVocab = [];
+  if (settings.backgroundPreset === 'meadow' || settings.backgroundPreset === 'sunset') {
+    settings.backgroundPreset = 'paper';
+  }
+  return settings;
 }
 
 async function saveSettings(settings) {
@@ -291,6 +318,135 @@ async function getPigState() {
 
 async function savePigState(state) {
   writeJSON(STUDY_PIGS_KEY, state);
+}
+
+function _normalizeAnimals(raw) {
+  const animals = {};
+  ANIMAL_SPECIES.forEach(function (s) {
+    const n = raw && raw[s];
+    animals[s] = (typeof n === 'number' && isFinite(n) && n > 0) ? Math.floor(n) : 0;
+  });
+  return animals;
+}
+
+function _normalizePlacements(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  Object.keys(raw).forEach(function (key) {
+    const p = raw[key];
+    if (!p || typeof p !== 'object') return;
+    const leftVw = Number(p.leftVw);
+    const topVh = Number(p.topVh);
+    const heightVw = Number(p.heightVw);
+    if (!Number.isFinite(leftVw) || !Number.isFinite(topVh)) return;
+    out[key] = {
+      leftVw: leftVw,
+      topVh: topVh,
+      flip: !!p.flip
+    };
+    if (Number.isFinite(heightVw)) out[key].heightVw = heightVw;
+  });
+  return out;
+}
+
+function _normalizePens(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(function (p) {
+    return p && typeof p === 'object' && p.id &&
+      Number.isFinite(Number(p.leftVw)) && Number.isFinite(Number(p.topVh)) &&
+      Number.isFinite(Number(p.widthVw)) && Number.isFinite(Number(p.heightVh));
+  }).map(function (p) {
+    return {
+      id: p.id,
+      leftVw: Number(p.leftVw),
+      topVh: Number(p.topVh),
+      widthVw: Number(p.widthVw),
+      heightVh: Number(p.heightVh),
+      paid: typeof p.paid === 'number' && isFinite(p.paid) ? p.paid : 0
+    };
+  });
+}
+
+function _normalizeTroughs(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(function (tr) {
+    return tr && typeof tr === 'object' && tr.id &&
+      Number.isFinite(Number(tr.leftVw)) && Number.isFinite(Number(tr.topVh));
+  }).map(function (tr) {
+    const heightVw = Number(tr.heightVw);
+    return {
+      id: tr.id,
+      leftVw: Number(tr.leftVw),
+      topVh: Number(tr.topVh),
+      heightVw: Number.isFinite(heightVw) ? heightVw : 1.55,
+      paid: typeof tr.paid === 'number' && isFinite(tr.paid) ? tr.paid : 0
+    };
+  });
+}
+
+function _emptyEconomyV2() {
+  return {
+    bucks: 0,
+    animals: _normalizeAnimals(null),
+    unlockedBackgrounds: [],
+    animalPlacements: {},
+    pens: [],
+    troughs: [],
+    economyV2: true
+  };
+}
+
+// Old study_pigs_v1 "pig every N cards" gifts must not become store animals.
+// Wipe only a one-time import of that counter: pigs-only, no other species,
+// no pens/troughs/grass, and pig count still matches (or is below) the
+// legacy totalPigs blob. Mixed herds or any real farm purchase are kept
+// and stamped economyV2 so this never runs again.
+function _isLegacyPigOnlyEconomy(raw) {
+  if (!raw || typeof raw !== 'object') return false;
+  if (raw.economyV2) return false;
+  const a = raw.animals || {};
+  const others = ['chickens', 'sheep', 'ducks', 'retrievers', 'fish'];
+  for (let i = 0; i < others.length; i++) {
+    if ((a[others[i]] || 0) > 0) return false;
+  }
+  if (Array.isArray(raw.pens) && raw.pens.length) return false;
+  if (Array.isArray(raw.troughs) && raw.troughs.length) return false;
+  const unlocked = Array.isArray(raw.unlockedBackgrounds) ? raw.unlockedBackgrounds : [];
+  if (unlocked.indexOf('grass') !== -1) return false;
+  const pigCount = (typeof a.pigs === 'number' && a.pigs > 0) ? Math.floor(a.pigs) : 0;
+  if (pigCount <= 0) return false;
+  const pigsBlob = readJSON(STUDY_PIGS_KEY, null);
+  if (!pigsBlob || typeof pigsBlob !== 'object' || typeof pigsBlob.totalPigs !== 'number') return false;
+  return pigCount <= Math.floor(pigsBlob.totalPigs);
+}
+
+function _normalizeEconomy(stored) {
+  const raw = stored && typeof stored === 'object' ? stored : {};
+  if (_isLegacyPigOnlyEconomy(raw)) return _emptyEconomyV2();
+  const base = Object.assign({}, DEFAULT_ECONOMY, raw);
+  base.bucks = typeof base.bucks === 'number' && isFinite(base.bucks) ? Math.round(base.bucks * 100) / 100 : 0;
+  base.animals = _normalizeAnimals(base.animals);
+  const unlocked = Array.isArray(base.unlockedBackgrounds) ? base.unlockedBackgrounds : [];
+  base.unlockedBackgrounds = unlocked.filter(function (id) { return id === 'grass'; });
+  base.animalPlacements = _normalizePlacements(base.animalPlacements);
+  base.pens = _normalizePens(base.pens);
+  base.troughs = _normalizeTroughs(base.troughs);
+  base.economyV2 = true;
+  return base;
+}
+
+async function getEconomy() {
+  const stored = readJSON(STUDY_ECONOMY_KEY, null);
+  const hasStored = !!(stored && typeof stored === 'object');
+  const next = _normalizeEconomy(hasStored ? stored : { economyV2: true });
+  if (!hasStored || !stored.economyV2) writeJSON(STUDY_ECONOMY_KEY, next);
+  return next;
+}
+
+async function saveEconomy(state) {
+  const next = _normalizeEconomy(state);
+  writeJSON(STUDY_ECONOMY_KEY, next);
+  return next;
 }
 
 async function getUsername() {
@@ -355,6 +511,7 @@ window.StudyStorage = {
     naists: STUDY_NAISTS_KEY,
     settings: STUDY_SETTINGS_KEY,
     pigs: STUDY_PIGS_KEY,
+    economy: STUDY_ECONOMY_KEY,
     username: STUDY_USERNAME_KEY,
     reviewLog: STUDY_REVIEW_LOG_KEY,
     lastDeck: STUDY_LAST_DECK_KEY

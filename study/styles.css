@@ -1,5 +1,5 @@
 /* =========================================================================
-   Hool's Carbs — a plain, modern flashcard app
+   Study Farm — a plain, modern flashcard app
    Visual shell only. No JS-driven behavior lives here.
    ========================================================================= */
 
@@ -19,7 +19,8 @@
   /* card/panel/input surface — a separate token from --white so dark mode
      can flip surfaces dark while leaving --white as true white (used for
      text/icons that sit on top of colored, non-surface backgrounds) */
-  --surface: #ffffff;
+  --surface: rgba(255, 255, 255, 0.74);
+  --glass-blur: 16px;
 
   --accent: #d6337a;
   --accent-dark: #b02465;
@@ -79,7 +80,8 @@
 
     --bg: #161013;
     --bg-deep: #201820;
-    --surface: #241b21;
+    --surface: rgba(36, 27, 33, 0.72);
+    --glass-blur: 16px;
 
     --accent: #f06baf;
     --accent-dark: #f68bc2;
@@ -161,6 +163,8 @@ input, textarea, select {
   font-family: var(--font-body);
   color: var(--ink);
   background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 1.5px solid var(--line-strong);
   border-radius: var(--radius-md);
   padding: 10px 14px;
@@ -219,6 +223,8 @@ input:focus, textarea:focus, select:focus {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   padding: clamp(28px, 6vw, 48px) clamp(24px, 5vw, 40px);
@@ -227,7 +233,6 @@ input:focus, textarea:focus, select:focus {
   flex-direction: column;
   align-items: center;
   gap: 14px;
-  border: 1px solid var(--line);
 }
 
 .auth-mascot {
@@ -302,18 +307,20 @@ input:focus, textarea:focus, select:focus {
   padding: 11px 18px;
   border-radius: var(--radius-md);
   background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   color: var(--ink);
   font-family: var(--font-body);
   font-weight: 700;
   font-size: 0.95rem;
-  border: 1.5px solid var(--line-strong);
   gap: 10px;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  box-shadow: var(--shadow-sm);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .google-btn:hover {
   background: var(--bg-deep);
-  border-color: var(--ink-faint);
+  box-shadow: var(--shadow-md);
 }
 
 /* Sign-in failure message — quiet but unmissable, so a blocked/disabled
@@ -358,51 +365,79 @@ input:focus, textarea:focus, select:focus {
 
 #top-nav {
   flex: 0 0 auto;
-  min-height: var(--nav-h);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  padding: 10px clamp(16px, 4vw, 32px);
+  padding: 6px var(--view-pad-x);
   background: var(--surface);
-  border-bottom: 1px solid var(--line);
-  flex-wrap: wrap;
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
+  box-shadow: var(--shadow-sm);
+  flex-wrap: nowrap;
   z-index: 5;
+}
+
+#top-nav-inner {
+  width: 100%;
+  max-width: var(--content-width);
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: nowrap;
 }
 
 #brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 10px;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
 #brand-mascot {
-  height: 38px;
+  height: 26px;
   width: auto;
-}
-
-#brand-title {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 1.25rem;
-  color: var(--ink);
+  flex-shrink: 0;
 }
 
 #user-greeting {
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   color: var(--ink-soft);
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-#pig-count-display {
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: var(--accent-dark);
-  background: var(--accent-tint);
-  padding: 3px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--accent-light);
+#app-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(1.05rem, 2.8vw, 1.45rem);
+  color: var(--ink);
+  text-align: left;
+  line-height: 1.15;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#bucks-display {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+#bucks-value {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(1.05rem, 2.6vw, 1.4rem);
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  white-space: nowrap;
 }
 
 .star-count-badge {
@@ -437,9 +472,9 @@ input:focus, textarea:focus, select:focus {
   max-width: calc(var(--content-width) + 2 * var(--view-pad-x));
   box-sizing: border-box;
   padding: 0 var(--view-pad-x);
-  margin: 14px auto 10px;
+  margin: 6px auto 4px;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   z-index: 4;
@@ -452,10 +487,11 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   justify-content: center;
   gap: 4px;
-  background: var(--bg-deep);
+  background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
   padding: 4px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--line);
   box-shadow: var(--shadow-md);
   flex-wrap: wrap;
 }
@@ -468,6 +504,51 @@ input:focus, textarea:focus, select:focus {
   gap: 6px;
 }
 
+#session-progress-chip {
+  grid-column: 1;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  box-shadow: var(--shadow-sm);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  line-height: 1.2;
+}
+#session-progress-chip[hidden] {
+  display: none;
+}
+#session-progress-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  max-width: 12ch;
+}
+#session-progress-name:not(:empty)::after {
+  content: '·';
+  margin-left: 6px;
+  color: var(--ink-soft);
+}
+#session-progress-counts {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+#session-progress-chip .mode-badge {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  font-size: 0.62rem;
+}
+
 .icon-btn {
   width: 40px;
   height: 40px;
@@ -475,18 +556,27 @@ input:focus, textarea:focus, select:focus {
   padding: 0;
   border-radius: var(--radius-md);
   background: var(--surface);
-  border: 1.5px solid var(--line-strong);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   color: var(--ink-soft);
   font-weight: 700;
   font-size: 1rem;
   flex-shrink: 0;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  box-shadow: var(--shadow-sm);
+  transition: background 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
 }
 
 .icon-btn:hover {
   background: var(--bg-deep);
   border-color: var(--ink-faint);
   color: var(--ink);
+}
+
+.icon-btn.active,
+.icon-btn[aria-pressed="true"] {
+  background: var(--accent-tint);
+  color: var(--accent-dark);
+  box-shadow: inset 0 0 0 1.5px var(--accent-light);
 }
 
 /* Line-art icons inside an icon button (e.g. the settings gear) match the
@@ -563,9 +653,76 @@ input:focus, textarea:focus, select:focus {
    centered column the rest of the app uses (.panel's max-width: 640px
    pattern) — nothing in Naists/Stody/Edit Daeck stretches full-width. */
 #view-naists,
-#view-study,
-#view-edit {
+#view-edit,
+#view-store {
   justify-content: flex-start;
+}
+
+#view-farm {
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+  pointer-events: none;
+}
+
+.farm-tab-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 4;
+  max-width: min(92vw, 420px);
+  margin: 0;
+  padding: 7px 12px;
+  border-radius: 999px;
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
+  pointer-events: none;
+}
+
+.farm-hint-sell {
+  display: none;
+}
+
+@media (min-width: 721px) {
+  .tab-btn[data-tab="farm"] {
+    display: none;
+  }
+}
+
+html.farm-tab #pig-field {
+  z-index: 3;
+}
+
+#farm-split-gap {
+  display: none !important;
+}
+
+html.farm-tab #main-content {
+  pointer-events: none;
+}
+
+html:not(.compact-layout).farm-tab #pig-field {
+  z-index: 1;
+}
+
+html:not(.compact-layout).farm-tab #main-content {
+  pointer-events: auto;
+}
+
+#view-study {
+  justify-content: flex-start;
+  padding-top: 0;
+  padding-bottom: 8px;
+  overflow: hidden;
 }
 
 .panel {
@@ -574,6 +731,12 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
 }
 
 .view-title {
@@ -591,16 +754,18 @@ input:focus, textarea:focus, select:focus {
   padding: 9px 18px;
   border-radius: var(--radius-md);
   background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   color: var(--ink);
   font-weight: 700;
   font-size: 0.86rem;
-  border: 1.5px solid var(--line-strong);
-  transition: background 0.15s ease, border-color 0.15s ease;
+  box-shadow: var(--shadow-sm);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .secondary-btn:hover {
   background: var(--bg-deep);
-  border-color: var(--ink-faint);
+  box-shadow: var(--shadow-md);
 }
 
 .secondary-btn:disabled {
@@ -618,6 +783,8 @@ input:focus, textarea:focus, select:focus {
   border-radius: var(--radius-md);
   border: 1.5px solid var(--line-strong);
   background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   font-size: 16px;
   color: var(--ink);
 }
@@ -638,6 +805,12 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
 }
 
 #naists-list {
@@ -786,9 +959,11 @@ input:focus, textarea:focus, select:focus {
   flex-shrink: 0;
   border-radius: var(--radius-md);
   background: var(--surface);
-  border: 1.5px solid var(--line-strong);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   color: var(--ink-soft);
   display: inline-flex;
+  box-shadow: var(--shadow-sm);
   align-items: center;
   justify-content: center;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
@@ -811,7 +986,6 @@ input:focus, textarea:focus, select:focus {
 
 .icon-action-btn.delete-btn:hover:not(:disabled) {
   color: var(--rating-again);
-  border-color: var(--rating-again);
 }
 
 /* Shared row shell for both naist rows and deck rows: a bordered card with
@@ -822,7 +996,8 @@ input:focus, textarea:focus, select:focus {
 .browse-row {
   width: 100%;
   background: var(--surface);
-  border: 1px solid var(--line);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
   border-radius: var(--radius-md);
   padding: 5px 10px;
   box-shadow: var(--shadow-sm);
@@ -831,11 +1006,10 @@ input:focus, textarea:focus, select:focus {
   flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: box-shadow 0.15s ease;
 }
 
 .browse-row:hover {
-  border-color: var(--accent);
   box-shadow: var(--shadow-md);
 }
 
@@ -850,10 +1024,27 @@ input:focus, textarea:focus, select:focus {
   flex-wrap: wrap;
 }
 
-/* The clickable/navigable part of a row (naist: navigate in; deck: just
-   informational — decks act via their explicit Stody/Cram/Edit buttons).
-   Both row types use this as their "title column" so a naist's nest icon and
-   a deck's name begin at the same x after the handle + chevron slot. */
+/* Deck rows: the row itself starts Study. Cram/Edit/handle/delete keep their
+   own cursors so they don't look like the study hit target. */
+.browse-row-deck {
+  cursor: pointer;
+}
+.browse-row-deck .drag-handle,
+.browse-row-deck .browse-row-primary-actions,
+.browse-row-deck .browse-row-actions {
+  cursor: auto;
+}
+.browse-row-deck .browse-row-primary-actions button,
+.browse-row-deck .browse-row-actions button {
+  cursor: pointer;
+}
+.browse-row-deck .deck-row-name:hover {
+  text-decoration: none;
+}
+
+/* The clickable/navigable part of a naist row (navigate in). Both row types
+   use this as their "title column" so a naist's nest icon and a deck's name
+   begin at the same x after the handle + chevron slot. */
 .browse-row-main {
   flex: 1 1 auto;
   min-width: 0;
@@ -922,21 +1113,16 @@ input:focus, textarea:focus, select:focus {
 
 /* A deck row's prominent call-to-study action — the one spot in the app
    deliberately styled to draw the eye more than a plain secondary-btn,
-   short of the accent "primary form action" buttons elsewhere (Add Carb,
+   short of the accent "primary form action" buttons elsewhere (Add Card,
    Show Answer, Save settings). */
-.browse-row-stody-btn {
-  padding: 6px 14px;
-  min-height: 36px;
-  border-radius: var(--radius-md);
-  background: var(--accent);
-  color: var(--white);
-  font-weight: 700;
-  font-size: 0.78rem;
-  transition: background 0.15s ease;
+.deck-row-name {
+  cursor: pointer;
 }
 
-.browse-row-stody-btn:hover {
-  background: var(--accent-dark);
+.deck-row-name:hover {
+  color: var(--accent-dark);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 /* ---- drag-and-drop + inline expand affordances ---- */
@@ -1090,25 +1276,17 @@ input:focus, textarea:focus, select:focus {
   align-items: stretch;
 }
 
-/* Three equal-flex tracks (back button | progress | right cluster) so the
-   progress line is truly centered on the column's midline, not just wedged
-   between two unequal-width side clusters. */
 #study-session-header {
   width: 100%;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-#back-to-decks-btn {
-  grid-column: 1;
-  justify-self: start;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  min-height: 0;
 }
 
 #session-progress {
-  grid-column: 2;
   text-align: center;
   font-weight: 700;
   color: var(--ink-soft);
@@ -1117,8 +1295,6 @@ input:focus, textarea:focus, select:focus {
 }
 
 #study-session-header-right {
-  grid-column: 3;
-  justify-self: end;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1175,18 +1351,19 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 20px;
+  gap: 10px;
   margin: 0 auto;
 }
 
 .card-shell {
   width: 100%;
   flex: 1 1 auto;
-  min-height: clamp(280px, 48vh, 560px);
+  min-height: min(42dvh, 280px);
   background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
-  border: 1px solid var(--line);
   padding: clamp(28px, 5vw, 48px);
   display: flex;
   flex-direction: column;
@@ -1229,9 +1406,11 @@ input:focus, textarea:focus, select:focus {
 }
 
 #show-answer-btn {
-  padding: 12px 34px;
+  padding: 6px 22px;
   border-radius: var(--radius-md);
-  background: var(--accent);
+  background: color-mix(in srgb, var(--accent) 82%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   color: var(--white);
   font-weight: 700;
   font-size: 1rem;
@@ -1246,27 +1425,35 @@ input:focus, textarea:focus, select:focus {
   width: 100%;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+  gap: 8px;
 }
 
-/* Chunky, tactile rating chips: the label reads big and bold, the interval
-   preview sits under it in a translucent pill. A soft "raised" bottom edge
-   plus lift-on-hover gives them a friendlier, less generic feel. Legible in
-   both themes because the color tokens are re-tuned per scheme. */
+/* Label on the left, interval chip on the right of the same row. */
 .rating-btn {
-  padding: 11px 8px 10px;
+  padding: 4px 8px;
   border-radius: var(--radius-md);
-  color: var(--white);
+  color: #fff;
   font-weight: 800;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   letter-spacing: 0.01em;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.18);
-  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.16), var(--shadow-sm);
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.16), var(--shadow-sm);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   transition: filter 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 5px;
+  justify-content: space-between;
+  gap: 6px;
+  overflow: visible;
+}
+
+.rating-btn-label {
+  min-width: 0;
+  flex: 1 1 auto;
+  text-align: left;
+  line-height: 1.1;
 }
 
 .rating-btn:hover {
@@ -1280,28 +1467,83 @@ input:focus, textarea:focus, select:focus {
 }
 
 .rating-interval {
-  display: inline-block;
-  font-weight: 700;
-  font-size: 0.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-weight: 800;
+  font-size: 0.72rem;
+  line-height: 1;
   color: #fff;
-  background: rgba(0, 0, 0, 0.18);
-  padding: 2px 8px;
+  -webkit-text-fill-color: #fff;
+  background: rgba(0, 0, 0, 0.42);
+  padding: 3px 7px;
   border-radius: 999px;
-  line-height: 1.2;
-  min-height: 1em;
+  white-space: nowrap;
+  min-width: 1.8em;
+  min-height: 1.15em;
+  opacity: 1;
+  visibility: visible;
+  overflow: visible;
 }
 
-.rating-again { background: var(--rating-again); }
-.rating-again:hover { background: var(--rating-again-dark); }
+.rating-again { background: color-mix(in srgb, var(--rating-again) 82%, transparent); }
+.rating-again:hover { background: color-mix(in srgb, var(--rating-again-dark) 88%, transparent); }
 
-.rating-hard { background: var(--rating-hard); }
-.rating-hard:hover { background: var(--rating-hard-dark); }
+.rating-hard { background: color-mix(in srgb, var(--rating-hard) 82%, transparent); }
+.rating-hard:hover { background: color-mix(in srgb, var(--rating-hard-dark) 88%, transparent); }
 
-.rating-good { background: var(--rating-good); }
-.rating-good:hover { background: var(--rating-good-dark); }
+.rating-good { background: color-mix(in srgb, var(--rating-good) 82%, transparent); }
+.rating-good:hover { background: color-mix(in srgb, var(--rating-good-dark) 88%, transparent); }
 
-.rating-easy { background: var(--rating-easy); }
-.rating-easy:hover { background: var(--rating-easy-dark); }
+.rating-easy { background: color-mix(in srgb, var(--rating-easy) 82%, transparent); }
+.rating-easy:hover { background: color-mix(in srgb, var(--rating-easy-dark) 88%, transparent); }
+
+#study-actions {
+  --study-action-h: 40px;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  flex: 0 0 auto;
+  min-height: var(--study-action-h);
+}
+#study-actions #undo-rating-btn,
+#study-actions #show-answer-btn,
+#study-actions .rating-btn {
+  align-self: stretch;
+  min-height: var(--study-action-h);
+  height: auto;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+#study-actions #undo-rating-btn {
+  flex: 0 0 auto;
+  justify-content: center;
+}
+#study-actions #show-answer-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  justify-content: center;
+}
+#study-actions #rating-buttons {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  min-height: var(--study-action-h);
+  align-self: stretch;
+}
+#study-actions .rating-btn {
+  height: 100%;
+  min-height: var(--study-action-h);
+  justify-content: space-between;
+}
 
 /* =========================================================================
    DECK SELECT ROW (Naists tab's "+ New naist / + New daeck" row)
@@ -1391,7 +1633,6 @@ select:focus,
   flex-direction: column;
   gap: 12px;
   background: var(--surface);
-  border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   padding: clamp(18px, 4vw, 28px);
   box-shadow: var(--shadow-sm);
@@ -1400,7 +1641,7 @@ select:focus,
 #add-front,
 #add-back {
   width: 100%;
-  min-height: 90px;
+  min-height: 200px;
   resize: vertical;
   padding: 13px 15px;
   border-radius: var(--radius-md);
@@ -1457,7 +1698,9 @@ select:focus,
   align-self: flex-start;
   padding: 11px 26px;
   border-radius: var(--radius-md);
-  background: var(--accent);
+  background: color-mix(in srgb, var(--accent) 82%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   color: var(--white);
   font-weight: 700;
   font-size: 0.95rem;
@@ -1478,7 +1721,8 @@ select:focus,
   justify-content: space-between;
   gap: 12px;
   background: var(--surface);
-  border: 1px solid var(--line);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
   border-radius: var(--radius-sm);
   padding: 8px 12px;
   box-shadow: var(--shadow-sm);
@@ -1491,7 +1735,7 @@ select:focus,
 
 .card-row.editing textarea {
   width: 100%;
-  min-height: 70px;
+  min-height: 180px;
   padding: 10px 12px;
   border-radius: var(--radius-sm);
   border: 1.5px solid var(--line-strong);
@@ -1630,7 +1874,8 @@ select:focus,
 
 .stat-tile {
   background: var(--surface);
-  border: 1px solid var(--line);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   border-radius: var(--radius-md);
   padding: 14px 16px;
   box-shadow: var(--shadow-sm);
@@ -1658,7 +1903,8 @@ select:focus,
   display: flex;
   gap: 6px;
   background: var(--surface);
-  border: 1px solid var(--line);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   border-radius: var(--radius-md);
   padding: 14px 12px 10px;
   box-shadow: var(--shadow-sm);
@@ -1719,7 +1965,6 @@ select:focus,
   gap: 10px;
   flex-wrap: wrap;
   background: var(--surface);
-  border: 1px solid var(--line);
   border-radius: var(--radius-md);
   padding: 10px 14px;
   box-shadow: var(--shadow-sm);
@@ -1762,7 +2007,7 @@ select:focus,
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .pig-scatter {
@@ -1772,6 +2017,12 @@ select:focus,
   user-select: none;
   filter: drop-shadow(0 4px 6px rgba(20, 24, 33, 0.14));
   opacity: 0.9;
+  touch-action: none;
+}
+
+.pig-scatter.dragging {
+  cursor: grabbing;
+  opacity: 1;
 }
 
 .pig-scatter.falling {
@@ -1787,12 +2038,10 @@ select:focus,
 }
 
 /* main content sits above the pig field */
-#top-nav,
 #tab-row,
 #tab-nav,
 #main-content,
 #auth-screen,
-#pig-encouragement-overlay,
 #loading-overlay {
   position: relative;
   z-index: 2;
@@ -1875,6 +2124,8 @@ select:focus,
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   padding: clamp(24px, 6vw, 36px);
@@ -1979,44 +2230,89 @@ select:focus,
 
 @media (max-width: 720px) {
   #top-nav {
-    padding: 10px 16px;
+    padding: 6px 16px;
     justify-content: center;
-    text-align: center;
+    text-align: left;
   }
 
   #brand {
-    justify-content: center;
-    width: 100%;
+    justify-content: flex-start;
+    width: auto;
   }
 
   /* On narrow screens, drop the left spacer column so the tab pill gets the
      full remaining width with the ? button still on its right. */
   #tab-row {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+    gap: 6px;
+  }
+
+  #session-progress-chip {
+    grid-column: 1;
+  }
+
+  #session-progress-name {
+    display: none;
   }
 
   #tab-nav {
-    grid-column: 1;
+    grid-column: 2;
     width: 100%;
     justify-content: center;
+    flex-wrap: nowrap;
   }
 
   #tab-row-tools {
-    grid-column: 2;
+    grid-column: 3;
   }
 
   .tab-btn {
-    flex: 1 1 auto;
-    padding: 6px 10px;
-    text-align: center;
+    padding: 6px 8px;
+    min-height: 36px;
+  }
+
+  .tab-btn svg {
+    width: 20px;
+    height: 20px;
   }
 
   #rating-buttons {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+
+  #study-actions {
+    --study-action-h: 38px;
+    gap: 6px;
+  }
+
+  .rating-btn {
+    font-size: 0.78rem;
+    gap: 4px;
+    padding: 2px 6px;
+  }
+
+  .rating-interval {
+    font-size: 0.66rem;
+    padding: 2px 5px;
+  }
+
+  html:not(.farm-tab) #main-content .view.active {
+    background: color-mix(in srgb, var(--bg) 42%, transparent);
+    backdrop-filter: blur(22px) saturate(1.2);
+    -webkit-backdrop-filter: blur(22px) saturate(1.2);
+  }
+
+  html:not(.farm-tab) #main-content .view.active .panel,
+  html:not(.farm-tab) #main-content .view.active .card-shell,
+  html:not(.farm-tab) #main-content .view.active .tab-empty-state {
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    backdrop-filter: blur(18px) saturate(1.2);
+    -webkit-backdrop-filter: blur(18px) saturate(1.2);
   }
 
   .card-shell {
-    min-height: clamp(200px, 40vh, 420px);
+    min-height: 0;
   }
 
   .browse-row-main {
@@ -2031,22 +2327,38 @@ select:focus,
   }
 }
 
+@media (max-width: 560px) {
+  #user-greeting {
+    display: none;
+  }
+
+  #brand-mascot {
+    height: 22px;
+  }
+
+  #app-title,
+  #bucks-value {
+    font-size: 1.02rem;
+  }
+}
+
 @media (max-width: 480px) {
   #brand-title {
     font-size: 1.1rem;
   }
 
-  #brand-mascot {
-    height: 30px;
-  }
-
-  #user-greeting,
-  #pig-count-display {
-    font-size: 0.78rem;
+  #shortcuts-btn {
+    display: none;
   }
 
   .tab-btn {
-    padding: 7px 10px;
+    padding: 6px 6px;
+  }
+
+  #tab-row-tools .icon-btn {
+    width: 36px;
+    height: 36px;
+    min-height: 36px;
   }
 }
 
@@ -2274,15 +2586,444 @@ select:focus,
 }
 
 /* =========================================================================
-   PIGS TAB — deliberately empty, transparent window onto #pig-field
+   STORE TAB
    ========================================================================= */
 
-#view-pigs {
-  background: transparent;
+#view-store {
+  justify-content: flex-start;
+}
+
+.store-panel {
+  gap: 14px;
+}
+
+.store-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.store-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.store-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: nowrap;
+  background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.store-thumb {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.store-thumb img {
+  max-width: 42px;
+  max-height: 42px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(20, 24, 33, 0.18));
+}
+
+.store-thumb-swatch {
+  border-radius: 8px;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow: inset 0 0 0 1px rgba(20, 24, 33, 0.08);
+}
+
+.store-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.store-row-name {
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  text-transform: none;
+}
+
+.store-row-meta {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.store-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.switch {
+  position: relative;
+  width: 44px;
+  height: 26px;
+  min-height: 26px;
   padding: 0;
-  /* let clicks pass through to whatever's below; the sprites themselves are
-     pointer-events:none decoration, so nothing here needs interaction */
+  border: none;
+  border-radius: 999px;
+  background: rgba(80, 70, 76, 0.28);
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+  transition: transform 0.15s ease;
+}
+
+.switch[aria-checked="true"] {
+  background: var(--accent);
+}
+
+.switch[aria-checked="true"]::after {
+  transform: translateX(18px);
+}
+
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-section.settings-toggle-row {
+  flex-direction: row;
+  align-items: center;
+}
+
+/* =========================================================================
+   TAG INPUT + CHIPS
+   ========================================================================= */
+
+.tag-input {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  min-height: 44px;
+}
+
+.tag-input input {
+  flex: 1 1 120px;
+  min-width: 80px;
+  border: none;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding: 4px 2px;
+  min-height: 28px;
+  box-shadow: none;
+}
+
+.tag-input input:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-tint);
+  border: 1px solid var(--accent-light);
+  color: var(--accent-dark);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.tag-chip[data-tone="0"] { background: #fde8ef; border-color: #f5b7c9; color: #9a2d52; }
+.tag-chip[data-tone="1"] { background: #fdeee0; border-color: #f3c39a; color: #9a4d18; }
+.tag-chip[data-tone="2"] { background: #fbf3d5; border-color: #ead48a; color: #7a5c10; }
+.tag-chip[data-tone="3"] { background: #e6f6e4; border-color: #a9d9a3; color: #2b7a3a; }
+.tag-chip[data-tone="4"] { background: #dff4f1; border-color: #97d4cc; color: #1d6f68; }
+.tag-chip[data-tone="5"] { background: #e3eefc; border-color: #a7c4f0; color: #2b5aa8; }
+.tag-chip[data-tone="6"] { background: #ece6fb; border-color: #c4b3f0; color: #5b3aa8; }
+.tag-chip[data-tone="7"] { background: #f8e6f6; border-color: #e3b0dc; color: #8a2f7e; }
+.tag-chip[data-tone="8"] { background: #ece9e4; border-color: #cfc6ba; color: #5c5348; }
+.tag-chip[data-tone="9"] { background: #e8f0e8; border-color: #b5cbb5; color: #3d5c3d; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tag-chip[data-tone="0"] { background: #3a1d28; border-color: #7a3a52; color: #f3c2d2; }
+  :root:not([data-theme="light"]) .tag-chip[data-tone="1"] { background: #3a2718; border-color: #8a5a32; color: #f3d0b0; }
+  :root:not([data-theme="light"]) .tag-chip[data-tone="2"] { background: #3a3418; border-color: #8a7a32; color: #efe3b0; }
+  :root:not([data-theme="light"]) .tag-chip[data-tone="3"] { background: #1c3320; border-color: #3d7a45; color: #bfe8c4; }
+  :root:not([data-theme="light"]) .tag-chip[data-tone="4"] { background: #173330; border-color: #3a7a74; color: #b8ebe4; }
+  :root:not([data-theme="light"]) .tag-chip[data-tone="5"] { background: #1a2740; border-color: #3d5f9a; color: #c2d6f6; }
+  :root:not([data-theme="light"]) .tag-chip[data-tone="6"] { background: #261a40; border-color: #5b3d9a; color: #d5c8f6; }
+  :root:not([data-theme="light"]) .tag-chip[data-tone="7"] { background: #3a1a36; border-color: #7a3a72; color: #f0c6ea; }
+  :root:not([data-theme="light"]) .tag-chip[data-tone="8"] { background: #2c2924; border-color: #6a6358; color: #ddd6cc; }
+  :root:not([data-theme="light"]) .tag-chip[data-tone="9"] { background: #1e2c1e; border-color: #4a6a4a; color: #c8ddc8; }
+}
+:root[data-theme="dark"] .tag-chip[data-tone="0"] { background: #3a1d28; border-color: #7a3a52; color: #f3c2d2; }
+:root[data-theme="dark"] .tag-chip[data-tone="1"] { background: #3a2718; border-color: #8a5a32; color: #f3d0b0; }
+:root[data-theme="dark"] .tag-chip[data-tone="2"] { background: #3a3418; border-color: #8a7a32; color: #efe3b0; }
+:root[data-theme="dark"] .tag-chip[data-tone="3"] { background: #1c3320; border-color: #3d7a45; color: #bfe8c4; }
+:root[data-theme="dark"] .tag-chip[data-tone="4"] { background: #173330; border-color: #3a7a74; color: #b8ebe4; }
+:root[data-theme="dark"] .tag-chip[data-tone="5"] { background: #1a2740; border-color: #3d5f9a; color: #c2d6f6; }
+:root[data-theme="dark"] .tag-chip[data-tone="6"] { background: #261a40; border-color: #5b3d9a; color: #d5c8f6; }
+:root[data-theme="dark"] .tag-chip[data-tone="7"] { background: #3a1a36; border-color: #7a3a72; color: #f0c6ea; }
+:root[data-theme="dark"] .tag-chip[data-tone="8"] { background: #2c2924; border-color: #6a6358; color: #ddd6cc; }
+:root[data-theme="dark"] .tag-chip[data-tone="9"] { background: #1e2c1e; border-color: #4a6a4a; color: #c8ddc8; }
+
+.tag-chip button {
+  min-height: 18px;
+  width: 16px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.tag-suggest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 8;
+  background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.tag-suggest button {
+  width: 100%;
+  justify-content: flex-start;
+  min-height: 36px;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  color: var(--ink);
+  font-size: 0.85rem;
+}
+
+.tag-suggest button:hover {
+  background: var(--accent-tint);
+}
+
+.card-row-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.tag-study-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--accent-light);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+}
+
+/* =========================================================================
+   ANIMAL FIELD — sell + focus
+   ========================================================================= */
+
+#pig-field.focus-hidden {
+  display: none;
+}
+
+html.focus-mode #bucks-display,
+#bucks-display[hidden] {
+  display: none;
+}
+
+html.focus-mode #field-place-layer {
+  display: none !important;
+}
+
+html.focus-mode .farm-tab-hint {
+  display: none;
+}
+
+#pig-field.sell-mode {
+  z-index: 3;
+}
+
+#pig-field.sell-mode .animal-scatter {
+  pointer-events: auto;
+  cursor: grab;
+}
+
+#pig-field.sell-mode .animal-scatter:hover {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  filter: drop-shadow(0 4px 6px rgba(20, 24, 33, 0.14)) brightness(1.06);
+}
+
+#pig-field.sell-mode .pen-fence,
+#pig-field.sell-mode .trough-object {
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.pen-fence,
+.trough-object {
+  position: absolute;
   pointer-events: none;
+  user-select: none;
+}
+.pen-fence svg,
+.trough-object svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.pen-boost-chip {
+  position: absolute;
+  transform: translateY(calc(-100% - 5px));
+  pointer-events: none;
+  user-select: none;
+  z-index: 60;
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.2);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease, visibility 0.12s ease;
+}
+.pen-boost-chip.is-visible {
+  opacity: 1;
+  visibility: visible;
+}
+.pen-boost-chip.is-visible.is-zero {
+  opacity: 0.72;
+}
+
+#field-place-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  cursor: crosshair;
+}
+#field-place-banner {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  pointer-events: none;
+  background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+  max-width: min(420px, 90vw);
+  text-align: center;
+}
+#pen-preview {
+  position: fixed;
+  pointer-events: none;
+  z-index: 6;
+}
+#field-place-price {
+  position: fixed;
+  z-index: 7;
+  pointer-events: none;
+  transform: translateX(-50%);
+  background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+  white-space: nowrap;
+}
+
+.store-hint {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  margin: 4px 0 10px;
+}
+
+.animal-sell-tip {
+  position: fixed;
+  z-index: 20;
+  pointer-events: none;
+  background: var(--surface);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+  white-space: nowrap;
 }
 
 /* =========================================================================
@@ -2343,7 +3084,8 @@ select:focus,
   --line-strong: #dccfd5;
   --bg: #faf6f7;
   --bg-deep: #f1e9ec;
-  --surface: #ffffff;
+  --surface: rgba(255, 255, 255, 0.74);
+  --glass-blur: 16px;
   --accent: #d6337a;
   --accent-dark: #b02465;
   --accent-light: #fbe0ee;
@@ -2373,7 +3115,8 @@ select:focus,
   --line-strong: #453a42;
   --bg: #161013;
   --bg-deep: #201820;
-  --surface: #241b21;
+  --surface: rgba(36, 27, 33, 0.72);
+  --glass-blur: 16px;
   --accent: #f06baf;
   --accent-dark: #f68bc2;
   --accent-light: #45213a;
@@ -2479,7 +3222,9 @@ body.drag-active {
 .primary-btn {
   padding: 10px 22px;
   border-radius: var(--radius-md);
-  background: var(--accent);
+  background: color-mix(in srgb, var(--accent) 82%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   color: var(--white);
   font-weight: 700;
   font-size: 0.9rem;
