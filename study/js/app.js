@@ -175,8 +175,6 @@
     els.bucksValue = document.getElementById('bucks-value');
     els.bucksDisplay = document.getElementById('bucks-display');
     els.bucksLabel = document.getElementById('bucks-label');
-    els.pigCountDisplay = document.getElementById('pig-count-display');
-    els.starCountDisplay = document.getElementById('star-count-display');
     els.tabBtns = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
     els.views = {
       naists: document.getElementById('view-naists'),
@@ -559,7 +557,6 @@
 
     refreshGreeting();
     updateBucksDisplay();
-    updatePigCountDisplay();
 
     bindTabs();
     bindLayoutMode();
@@ -664,21 +661,6 @@
 
   function updateBucksDisplay() {
     if (els.bucksValue) els.bucksValue.textContent = formatCurrency(economy.bucks);
-  }
-
-  // Header pig/star badges were replaced by bucks. Keep these no-ops so a
-  // mixed HTML/JS deploy (or any leftover caller) cannot crash enterApp.
-  function updatePigCountDisplay() {
-    if (!els.pigCountDisplay) return;
-    const n = (economy && economy.animals && economy.animals.pigs) || 0;
-    els.pigCountDisplay.textContent = n + (n === 1 ? ' bigbert' : ' bigberts');
-  }
-
-  function updateStarCountDisplay() {
-    if (!els.starCountDisplay) return;
-    const count = (economy && economy.starCount) || 0;
-    els.starCountDisplay.hidden = count === 0;
-    if (count > 0) els.starCountDisplay.textContent = String(count);
   }
 
   function applyFocusMode(on) {
