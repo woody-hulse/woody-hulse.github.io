@@ -505,6 +505,60 @@
   --accent-tint: #ead0e1;
 }
 
+:root[data-bg="grass"],
+:root[data-theme][data-bg="grass"] {
+  --bg: #72b84e;
+  --bg-deep: #316f49;
+  --pixel-grass: #72b84e;
+  --pixel-grass-dark: #316f49;
+  --pixel-grass-light: #b8d86b;
+  --pixel-grass-tile:
+    linear-gradient(90deg, transparent 0 4px, rgba(49, 111, 73, 0.42) 4px 8px, transparent 8px 32px),
+    linear-gradient(0deg, transparent 0 20px, rgba(184, 216, 107, 0.48) 20px 24px, transparent 24px 32px),
+    linear-gradient(90deg, transparent 0 22px, rgba(49, 111, 73, 0.36) 22px 26px, transparent 26px 32px),
+    linear-gradient(0deg, transparent 0 6px, rgba(184, 216, 107, 0.34) 6px 10px, transparent 10px 32px),
+    linear-gradient(90deg, transparent 0 14px, rgba(215, 204, 88, 0.42) 14px 18px, transparent 18px 32px),
+    linear-gradient(90deg, rgba(255,255,255,0.08) 0 4px, transparent 4px 100%),
+    linear-gradient(0deg, rgba(255,255,255,0.08) 0 4px, transparent 4px 100%),
+    linear-gradient(45deg, transparent 0 10px, rgba(49, 111, 73, 0.28) 10px 14px, transparent 14px 24px),
+    linear-gradient(135deg, transparent 0 8px, rgba(184, 216, 107, 0.34) 8px 12px, transparent 12px 24px),
+    linear-gradient(180deg, var(--pixel-grass-light), var(--pixel-grass));
+}
+
+:root[data-bg="grass-meadow"],
+:root[data-theme][data-bg="grass-meadow"] {
+  --bg: #80bf58;
+  --bg-deep: #397b49;
+  --pixel-grass: #79b84f;
+  --pixel-grass-dark: #2f6f42;
+  --pixel-grass-light: #c2dd75;
+  --pixel-grass-tile:
+    linear-gradient(90deg, transparent 0 4px, rgba(47, 111, 66, 0.46) 4px 8px, transparent 8px 32px),
+    linear-gradient(0deg, transparent 0 22px, rgba(194, 221, 117, 0.52) 22px 26px, transparent 26px 32px),
+    linear-gradient(90deg, transparent 0 10px, rgba(239, 182, 67, 0.34) 10px 14px, transparent 14px 32px),
+    linear-gradient(0deg, transparent 0 8px, rgba(207, 70, 104, 0.26) 8px 12px, transparent 12px 32px),
+    linear-gradient(90deg, transparent 0 25px, rgba(36, 137, 143, 0.22) 25px 29px, transparent 29px 32px),
+    linear-gradient(45deg, transparent 0 9px, rgba(47, 111, 66, 0.26) 9px 13px, transparent 13px 24px),
+    linear-gradient(135deg, transparent 0 7px, rgba(194, 221, 117, 0.32) 7px 11px, transparent 11px 24px),
+    linear-gradient(180deg, var(--pixel-grass-light), var(--pixel-grass));
+}
+
+:root[data-bg="grass-noise"],
+:root[data-theme][data-bg="grass-noise"] {
+  --bg: #74b652;
+  --bg-deep: #346f44;
+  --pixel-grass: #74b652;
+  --pixel-grass-dark: #2e6b43;
+  --pixel-grass-light: #acd064;
+  --pixel-grass-tile:
+    linear-gradient(90deg, rgba(46, 107, 67, 0.18) 0 4px, transparent 4px 8px, rgba(172, 208, 100, 0.16) 8px 12px, transparent 12px 16px),
+    linear-gradient(0deg, transparent 0 4px, rgba(46, 107, 67, 0.16) 4px 8px, transparent 8px 12px, rgba(172, 208, 100, 0.14) 12px 16px),
+    linear-gradient(90deg, transparent 0 6px, rgba(91, 148, 69, 0.28) 6px 10px, transparent 10px 20px, rgba(56, 128, 73, 0.22) 20px 24px, transparent 24px 32px),
+    linear-gradient(0deg, transparent 0 18px, rgba(190, 216, 107, 0.22) 18px 22px, transparent 22px 32px),
+    linear-gradient(45deg, transparent 0 10px, rgba(46, 107, 67, 0.18) 10px 14px, transparent 14px 24px),
+    linear-gradient(180deg, var(--pixel-grass-light), var(--pixel-grass));
+}
+
 * {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
@@ -1192,6 +1246,8 @@ select:focus,
   box-shadow: 2px 2px 0 var(--pixel-shadow);
   font-weight: 800;
   letter-spacing: 0;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 .deck-due-badge {
@@ -1364,7 +1420,13 @@ select:focus,
 .tag-chip {
   background: var(--accent-tint);
   color: var(--ink);
+  font-size: var(--tag-fit-size, clamp(0.54rem, 1.6vw, 0.72rem));
+  max-width: min(100%, 32ch);
   padding: 3px 8px;
+}
+
+.tag-chip-text {
+  display: block;
 }
 
 .tag-chip[data-tone] {
@@ -1548,6 +1610,22 @@ select:focus,
   text-shadow: none;
 }
 
+.store-row-title-line {
+  align-items: center;
+}
+
+.store-owned-badge {
+  border: 2px solid var(--pixel-line);
+  border-radius: 0;
+  background: var(--pixel-highlight);
+  box-shadow: 2px 2px 0 var(--pixel-shadow);
+  color: var(--pixel-line);
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
 .store-row.is-locked-preview,
 .store-row.is-locked-full {
   background-color: #f2d99a;
@@ -1574,6 +1652,7 @@ select:focus,
 
 .store-panel .store-row-name,
 .store-panel .store-row-meta,
+.store-panel .store-owned-badge,
 .store-panel .store-row button {
   text-shadow: none;
 }
@@ -1624,6 +1703,7 @@ select:focus,
 #new-deck-overlay,
 #text-prompt-overlay,
 #pixel-modal-overlay,
+#animal-detail-overlay,
 #settings-overlay,
 #loading-overlay {
   background:
@@ -1641,6 +1721,7 @@ select:focus,
 .shortcuts-card h2,
 .text-prompt-card h2,
 .pixel-modal-card h2,
+.animal-detail-card h2,
 .new-deck-card h2,
 .settings-card h2 {
   color: var(--ink);
@@ -1662,6 +1743,42 @@ select:focus,
 
 .pixel-modal-message {
   color: var(--ink);
+  text-shadow: none;
+}
+
+.animal-detail-card {
+  max-width: 420px;
+}
+
+.animal-detail-sprite {
+  background: var(--accent-tint);
+  border: 2px solid var(--pixel-line);
+  box-shadow: inset 0 0 0 2px var(--pixel-paper), 3px 3px 0 var(--pixel-shadow);
+}
+
+.animal-detail-sprite .pixel-animal {
+  --pixel-scale: 5px;
+  width: 112px;
+  height: 96px;
+}
+
+.animal-detail-name-field span {
+  color: var(--pixel-line);
+  text-shadow: none;
+}
+
+.animal-detail-name-field input {
+  border-radius: 0;
+  border: 2px solid var(--pixel-line);
+  box-shadow: 3px 3px 0 var(--pixel-shadow);
+}
+
+.animal-detail-stats span {
+  border: 2px solid var(--pixel-line);
+  border-radius: 0;
+  background: var(--pixel-paper);
+  box-shadow: 2px 2px 0 var(--pixel-shadow);
+  color: var(--pixel-line);
   text-shadow: none;
 }
 
@@ -1756,7 +1873,8 @@ select:focus,
 
 #pig-field.sell-mode .animal-scatter:hover,
 #pig-field.sell-mode .pen-fence:hover,
-#pig-field.sell-mode .trough-object:hover {
+#pig-field.sell-mode .trough-object:hover,
+#pig-field.sell-mode .coop-object:hover {
   outline: 3px solid var(--pixel-focus);
   outline-offset: 4px;
 }
@@ -2050,8 +2168,9 @@ html.focus-mode #tab-row {
 }
 
 .store-thumb .pixel-flower-art {
-  width: 54px;
-  height: 48px;
+  --flower-thumb-cell: 2px;
+  width: calc(var(--flower-w) * var(--flower-thumb-cell));
+  height: calc(var(--flower-h) * var(--flower-thumb-cell));
   margin: auto;
 }
 
@@ -2081,16 +2200,11 @@ html.focus-mode #tab-row {
 }
 
 .animal-scatter.walking .pixel-sprite-inner {
-  animation: pixel-step-bob 420ms steps(2, end) infinite;
+  animation: none;
 }
 
 .animal-scatter.resting .pixel-sprite-inner {
   animation: none;
-}
-
-@keyframes pixel-step-bob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
 }
 
 .encouragement-sprite-slot.pixel-animal {
@@ -2125,12 +2239,14 @@ html.focus-mode #tab-row {
 
 .pen-fence,
 .trough-object,
+.coop-object,
 .flower-object {
   overflow: visible;
   image-rendering: pixelated;
 }
 
 .trough-object,
+.coop-object,
 .flower-object {
   filter: none;
   contain: none;
@@ -2138,6 +2254,7 @@ html.focus-mode #tab-row {
 }
 
 .trough-object.dragging,
+.coop-object.dragging,
 .flower-object.dragging {
   filter: none;
   opacity: 0.96;
@@ -2171,34 +2288,31 @@ html.focus-mode #tab-row {
 }
 
 .pixel-fence-art,
-.pixel-trough-art {
+.pixel-trough-art,
+.pixel-coop-art {
   position: absolute;
   inset: 0;
   display: block;
 }
 
-.pixel-trough-art {
+.pixel-trough-art,
+.pixel-coop-art {
   isolation: isolate;
+  display: grid;
 }
 
-.pixel-trough-art::before {
-  content: "";
-  position: absolute;
-  left: 12%;
-  right: 6%;
-  top: 70%;
-  height: 18%;
-  background: rgba(42, 27, 20, 0.34);
-  transform: translate(3px, 3px);
-  z-index: -1;
+.pixel-trough-art {
+  grid-template-columns: repeat(var(--trough-w), 1fr);
+  grid-template-rows: repeat(var(--trough-h), 1fr);
+}
+
+.pixel-coop-art {
+  grid-template-columns: repeat(var(--coop-w), 1fr);
+  grid-template-rows: repeat(var(--coop-h), 1fr);
 }
 
 .pixel-fence-rail,
-.pixel-fence-post,
-.trough-leg,
-.trough-bowl,
-.trough-water,
-.trough-rim {
+.pixel-fence-post {
   position: absolute;
   display: block;
   box-sizing: border-box;
@@ -2225,8 +2339,8 @@ html.focus-mode #tab-row {
 }
 
 .pixel-fence-vertical .pixel-fence-rail {
-  top: 0;
-  height: 100%;
+  top: 5%;
+  height: 90%;
   width: 12%;
   background: var(--pixel-wood);
   border-left: 1px solid var(--pixel-wood-light);
@@ -2235,9 +2349,9 @@ html.focus-mode #tab-row {
 }
 
 .pixel-fence-vertical .pixel-fence-post {
-  left: 8%;
-  width: 84%;
-  height: max(8px, 0.85vw);
+  left: 13%;
+  width: 74%;
+  height: max(7px, 0.66vw);
   background: var(--pixel-wood);
   border-top: 2px solid var(--pixel-wood-light);
   border-bottom: 2px solid var(--pixel-wood-dark);
@@ -2249,63 +2363,17 @@ html.focus-mode #tab-row {
   min-height: 12px;
 }
 
-.trough-bowl {
-  left: 8%;
-  right: 8%;
-  top: 32%;
-  height: 38%;
-  background: var(--pixel-wood);
-  border: 2px solid var(--pixel-line);
-  box-shadow: inset 0 4px 0 var(--pixel-wood-light), inset 0 -4px 0 var(--pixel-wood-dark);
+.coop-object {
+  min-width: 22px;
+  min-height: 20px;
 }
 
-.trough-water {
-  left: 20%;
-  right: 20%;
-  top: 24%;
-  height: 18%;
-  background: var(--pixel-water);
-  border: 2px solid var(--pixel-line);
-}
-
-.trough-water.water-b {
-  left: 34%;
-  right: 34%;
-  top: 30%;
-  height: 10%;
-  background: #a7d8e8;
-  border: 0;
-}
-
-.trough-rim {
-  left: 6%;
-  right: 6%;
-  top: 26%;
-  height: 13%;
-  background: var(--pixel-wood-light);
-  border: 2px solid var(--pixel-line);
-}
-
-.trough-rim.rim-front {
-  top: 58%;
-  height: 16%;
-  background: var(--pixel-wood-dark);
-}
-
-.trough-leg {
-  top: 62%;
-  width: 11%;
-  height: 34%;
-  background: var(--pixel-wood-dark);
-  border: 2px solid var(--pixel-line);
-}
-
-.trough-leg.leg-left {
-  left: 14%;
-}
-
-.trough-leg.leg-right {
-  right: 14%;
+.pixel-trough-cell,
+.pixel-coop-cell {
+  display: block;
+  box-sizing: border-box;
+  min-width: 1px;
+  min-height: 1px;
 }
 
 .flower-object {
@@ -2342,12 +2410,12 @@ html.focus-mode #tab-row {
 .flower-object.pixel-flower-art::after {
   content: "";
   position: absolute;
-  left: 12%;
-  right: 10%;
-  bottom: 9%;
-  height: 10%;
+  left: 14%;
+  right: 12%;
+  bottom: 3%;
+  height: 8%;
   background: rgba(42, 27, 20, 0.34);
-  transform: translate(1px, 0);
+  transform: none;
   z-index: -1;
 }
 
@@ -2356,9 +2424,28 @@ html.focus-mode #tab-row {
   cursor: grab;
 }
 
+#pig-field.sell-mode .coop-object {
+  pointer-events: auto;
+  cursor: grab;
+}
+
 #pig-field.sell-mode .flower-object:hover {
   outline: 3px solid var(--pixel-focus);
   outline-offset: 4px;
+}
+
+html.compact-layout:not(.farm-tab) #pig-field,
+html.compact-layout:not(.farm-tab) #pig-field.sell-mode {
+  z-index: 1;
+  pointer-events: none;
+}
+
+html.compact-layout:not(.farm-tab) #pig-field .animal-scatter,
+html.compact-layout:not(.farm-tab) #pig-field .pen-fence,
+html.compact-layout:not(.farm-tab) #pig-field .trough-object,
+html.compact-layout:not(.farm-tab) #pig-field .coop-object,
+html.compact-layout:not(.farm-tab) #pig-field .flower-object {
+  pointer-events: none;
 }
 
 html.focus-mode-sleep #pig-field {
@@ -2381,6 +2468,7 @@ html.focus-mode-sleep #pig-field::after {
 html.focus-mode-sleep .animal-scatter,
 html.focus-mode-sleep .pen-fence,
 html.focus-mode-sleep .trough-object,
+html.focus-mode-sleep .coop-object,
 html.focus-mode-sleep .flower-object {
   opacity: 0.34;
   filter: brightness(0.38) saturate(0.42) hue-rotate(155deg);
@@ -2395,6 +2483,7 @@ html.focus-mode-sleep #pig-field {
 html.focus-mode-sleep #pig-field.sell-mode .animal-scatter,
 html.focus-mode-sleep #pig-field.sell-mode .pen-fence,
 html.focus-mode-sleep #pig-field.sell-mode .trough-object,
+html.focus-mode-sleep #pig-field.sell-mode .coop-object,
 html.focus-mode-sleep #pig-field.sell-mode .flower-object {
   outline: 0;
 }

@@ -19,8 +19,8 @@ const STUDY_LAST_DECK_KEY = 'study_last_deck_v1';
 
 // sessionCardLimit: 0 means "no limit" (Anki-style per-session review cap).
 // accentPreset names a themed token pair (see styles.css :root[data-accent]).
-// backgroundPreset remains for old saved data, but the pixel redesign always
-// resolves the page background to the single grass field.
+// backgroundPreset is limited to authored pixel grass textures; old saved
+// cosmetic/image background ids normalize back to canonical grass.
 // theme: 'light' | 'dark' | 'system' — system leaves data-theme unset so the
 // existing prefers-color-scheme token block wins.
 const DEFAULT_SETTINGS = {
@@ -34,6 +34,7 @@ const DEFAULT_SETTINGS = {
   encouragement: false,
   tagVocab: []
 };
+const GRASS_BACKGROUND_PRESETS = ['grass', 'grass-meadow', 'grass-noise'];
 const DEFAULT_PIG_STATE = { totalPigs: 1, starCount: 0 };
 const ANIMAL_SPECIES = ['chickens', 'sheep', 'ducks', 'retrievers', 'pigs', 'fish', 'bison', 'horse', 'squid', 'giraffe', 'cat', 'lizard'];
 const FLOWER_TYPES = window.StudyFlowers ? window.StudyFlowers.ids() : ['clover', 'zinnias', 'amaranth', 'cosmos', 'dahlias', 'lupine'];
@@ -51,8 +52,11 @@ const DEFAULT_ECONOMY = {
   unlockedBackgrounds: [],
   animalPlacements: {},
   animalNames: {},
+  animalHappiness: {},
+  rewardLedger: { paid: {} },
   pens: [],
   troughs: [],
+  coops: [],
   flowers: [],
   passiveIncome: {
     version: 1,
@@ -339,7 +343,9 @@ async function getSettings() {
   const settings = Object.assign({}, DEFAULT_SETTINGS, stored && typeof stored === 'object' ? stored : {});
   delete settings.sellAnimals;
   if (!Array.isArray(settings.tagVocab)) settings.tagVocab = [];
-  settings.backgroundPreset = 'grass';
+  if (GRASS_BACKGROUND_PRESETS.indexOf(settings.backgroundPreset) === -1) {
+    settings.backgroundPreset = 'grass';
+  }
   settings.backgroundImage = null;
   return settings;
 }
@@ -428,6 +434,34 @@ function _normalizeAnimalNames(raw, animals) {
   return out;
 }
 
+function _normalizeAnimalHappiness(raw, animals) {
+  const out = {};
+  const counts = animals || {};
+  if (!raw || typeof raw !== 'object') return out;
+  Object.keys(raw).forEach(function (key) {
+    const parts = key.split('-');
+    const species = parts[0];
+    const index = Number(parts[1]);
+    const value = Number(raw[key]);
+    if (ANIMAL_SPECIES.indexOf(species) === -1 && !Object.prototype.hasOwnProperty.call(counts, species)) return;
+    if (!Number.isInteger(index) || index < 1 || index > (counts[species] || 0)) return;
+    if (!Number.isFinite(value) || value <= 0) return;
+    out[key] = Math.max(0, Math.min(100, Math.round(value * 10) / 10));
+  });
+  return out;
+}
+
+function _normalizeRewardLedger(raw) {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const paidSource = source.paid && typeof source.paid === 'object' && !Array.isArray(source.paid) ? source.paid : source;
+  const paid = {};
+  Object.keys(paidSource || {}).forEach(function (key) {
+    const clean = String(key || '').trim();
+    if (clean && paidSource[key]) paid[clean.slice(0, 160)] = true;
+  });
+  return { paid: paid };
+}
+
 function _normalizePens(raw) {
   if (!Array.isArray(raw)) return [];
   return raw.filter(function (p) {
@@ -459,6 +493,27 @@ function _normalizeTroughs(raw) {
       topVh: Number(tr.topVh),
       heightVw: Number.isFinite(heightVw) ? heightVw : 1.55,
       paid: typeof tr.paid === 'number' && isFinite(tr.paid) ? tr.paid : 0
+    };
+  });
+}
+
+function _normalizeCoops(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(function (coop) {
+    return coop && typeof coop === 'object' && coop.id &&
+      Number.isFinite(Number(coop.leftVw)) && Number.isFinite(Number(coop.topVh));
+  }).map(function (coop) {
+    const heightVw = Number(coop.heightVw);
+    return {
+      id: coop.id,
+      leftVw: Number(coop.leftVw),
+      topVh: Number(coop.topVh),
+      heightVw: Number.isFinite(heightVw) ? heightVw : 2.35,
+      paid: typeof coop.paid === 'number' && isFinite(coop.paid) ? coop.paid : 0,
+      eggValue: _normalizeMoney(coop.eggValue),
+      eggCarry: Math.max(0, Number(coop.eggCarry) || 0),
+      totalEggValue: _normalizeMoney(coop.totalEggValue),
+      lastEggAt: _normalizeTimestamp(coop.lastEggAt)
     };
   });
 }
@@ -515,8 +570,11 @@ function _emptyEconomyV2() {
     unlockedBackgrounds: [],
     animalPlacements: {},
     animalNames: {},
+    animalHappiness: {},
+    rewardLedger: { paid: {} },
     pens: [],
     troughs: [],
+    coops: [],
     flowers: [],
     passiveIncome: _normalizePassiveIncome(null),
     economyV2: true
@@ -556,11 +614,14 @@ function _normalizeEconomy(stored) {
   base.animals = _normalizeAnimals(base.animals);
   base.unlockedAnimals = _normalizeUnlockedAnimals(base.unlockedAnimals, base.animals);
   const unlocked = Array.isArray(base.unlockedBackgrounds) ? base.unlockedBackgrounds : [];
-  base.unlockedBackgrounds = unlocked.filter(function (id) { return id === 'grass'; });
+  base.unlockedBackgrounds = unlocked.filter(function (id) { return GRASS_BACKGROUND_PRESETS.indexOf(id) !== -1; });
   base.animalPlacements = _normalizePlacements(base.animalPlacements);
   base.animalNames = _normalizeAnimalNames(base.animalNames, base.animals);
+  base.animalHappiness = _normalizeAnimalHappiness(base.animalHappiness, base.animals);
+  base.rewardLedger = _normalizeRewardLedger(base.rewardLedger);
   base.pens = _normalizePens(base.pens);
   base.troughs = _normalizeTroughs(base.troughs);
+  base.coops = _normalizeCoops(base.coops);
   base.flowers = _normalizeFlowers(base.flowers);
   base.passiveIncome = _normalizePassiveIncome(base.passiveIncome, base);
   delete base.passiveLastAt;
@@ -573,7 +634,7 @@ async function getEconomy() {
   const stored = readJSON(STUDY_ECONOMY_KEY, null);
   const hasStored = !!(stored && typeof stored === 'object');
   const next = _normalizeEconomy(hasStored ? stored : { economyV2: true });
-  if (!hasStored || !stored.economyV2 || !Array.isArray(stored.flowers) || !Array.isArray(stored.unlockedAnimals) || !stored.animalNames || typeof stored.animalNames !== 'object' || Array.isArray(stored.animalNames) || !stored.passiveIncome || typeof stored.passiveIncome !== 'object' || Array.isArray(stored.passiveIncome)) {
+  if (!hasStored || !stored.economyV2 || !Array.isArray(stored.flowers) || !Array.isArray(stored.coops) || !Array.isArray(stored.unlockedAnimals) || !stored.animalNames || typeof stored.animalNames !== 'object' || Array.isArray(stored.animalNames) || !stored.animalHappiness || typeof stored.animalHappiness !== 'object' || Array.isArray(stored.animalHappiness) || !stored.rewardLedger || typeof stored.rewardLedger !== 'object' || Array.isArray(stored.rewardLedger) || !stored.passiveIncome || typeof stored.passiveIncome !== 'object' || Array.isArray(stored.passiveIncome)) {
     writeJSON(STUDY_ECONOMY_KEY, next);
     await flushStudyStorage();
   }

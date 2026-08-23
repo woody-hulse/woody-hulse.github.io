@@ -5,11 +5,13 @@
       nameKey: 'flowerClover',
       base: 6,
       bonus: 0.01,
-      heightVw: 1.55,
+      width: 18,
+      height: 12,
+      heightVw: 1.32,
       shape: 'clover',
       palette: {
         stem: '#2f7a45',
-        leaf: '#3e9a4a',
+        leaf: '#3f9849',
         leafLight: '#8bd96f',
         petal: '#fff4d2',
         petalLight: '#ffffff',
@@ -22,7 +24,9 @@
       nameKey: 'flowerZinnias',
       base: 10,
       bonus: 0.02,
-      heightVw: 1.75,
+      width: 20,
+      height: 16,
+      heightVw: 1.76,
       shape: 'zinnias',
       palette: {
         stem: '#2f7a45',
@@ -39,7 +43,9 @@
       nameKey: 'flowerAmaranth',
       base: 45,
       bonus: 0.04,
-      heightVw: 2.05,
+      width: 22,
+      height: 20,
+      heightVw: 2.2,
       shape: 'amaranth',
       palette: {
         stem: '#2d7443',
@@ -56,7 +62,9 @@
       nameKey: 'flowerCosmos',
       base: 180,
       bonus: 0.06,
-      heightVw: 1.95,
+      width: 20,
+      height: 17,
+      heightVw: 1.87,
       shape: 'cosmos',
       palette: {
         stem: '#317851',
@@ -73,7 +81,9 @@
       nameKey: 'flowerDahlias',
       base: 620,
       bonus: 0.08,
-      heightVw: 2.25,
+      width: 24,
+      height: 20,
+      heightVw: 2.2,
       shape: 'dahlias',
       palette: {
         stem: '#2b7142',
@@ -90,7 +100,9 @@
       nameKey: 'flowerLupine',
       base: 1900,
       bonus: 0.11,
-      heightVw: 2.35,
+      width: 22,
+      height: 22,
+      heightVw: 2.42,
       shape: 'lupine',
       palette: {
         stem: '#286b5a',
@@ -104,190 +116,195 @@
     }
   ];
 
-  const WIDTH = 18;
-  const HEIGHT = 16;
-
   function copySpec(spec) {
     return Object.assign({}, spec, { palette: Object.assign({}, spec.palette) });
   }
 
-  function dot(cells, x, y, color) {
-    if (x < 0 || y < 0 || x >= WIDTH || y >= HEIGHT) return;
+  function dot(cells, spec, x, y, color) {
+    if (x < 0 || y < 0 || x >= spec.width || y >= spec.height) return;
     cells.push({ x: x, y: y, color: color });
   }
 
-  function rect(cells, x, y, w, h, color) {
+  function rect(cells, spec, x, y, w, h, color) {
     for (let yy = y; yy < y + h; yy++) {
-      for (let xx = x; xx < x + w; xx++) dot(cells, xx, yy, color);
+      for (let xx = x; xx < x + w; xx++) dot(cells, spec, xx, yy, color);
     }
   }
 
-  function line(cells, x1, y1, x2, y2, color) {
-    const dx = Math.sign(x2 - x1);
-    const dy = Math.sign(y2 - y1);
-    let x = x1;
-    let y = y1;
-    dot(cells, x, y, color);
-    while (x !== x2 || y !== y2) {
-      if (x !== x2) x += dx;
-      if (y !== y2) y += dy;
-      dot(cells, x, y, color);
+  function line(cells, spec, x1, y1, x2, y2, color) {
+    const steps = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1), 1);
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      dot(cells, spec, Math.round(x1 + (x2 - x1) * t), Math.round(y1 + (y2 - y1) * t), color);
     }
   }
 
-  function leafBase(cells, y) {
-    rect(cells, 3, y, 12, 3, 'leaf');
-    rect(cells, 2, y + 1, 14, 2, 'leaf');
-    rect(cells, 5, y - 1, 8, 2, 'leafLight');
-    rect(cells, 4, y + 2, 10, 1, 'shadow');
-    dot(cells, 1, y + 2, 'shadow');
-    dot(cells, 16, y + 2, 'shadow');
+  function leafMound(cells, spec, y, inset) {
+    const left = inset || 2;
+    const width = spec.width - left * 2;
+    rect(cells, spec, left + 1, y, width - 2, 3, 'leaf');
+    rect(cells, spec, left, y + 1, width, 2, 'leaf');
+    rect(cells, spec, left + 3, y - 1, Math.max(4, width - 6), 2, 'leafLight');
+    rect(cells, spec, left + 2, y + 3, Math.max(3, width - 4), 1, 'shadow');
+    dot(cells, spec, left - 1, y + 2, 'shadow');
+    dot(cells, spec, left + width, y + 2, 'shadow');
   }
 
-  function stem(cells, x, top, bottom) {
-    rect(cells, x, top, 1, bottom - top + 1, 'stem');
-    rect(cells, x + 1, top + 1, 1, Math.max(1, bottom - top), 'shadow');
-    dot(cells, x - 1, bottom - 3, 'leaf');
-    dot(cells, x - 2, bottom - 2, 'leafLight');
-    dot(cells, x + 2, bottom - 4, 'leaf');
-    dot(cells, x + 3, bottom - 5, 'leafLight');
-    rect(cells, x - 2, bottom, 5, 1, 'shadow');
+  function plantStem(cells, spec, x, top, bottom, lean) {
+    const endX = x + (lean || 0);
+    line(cells, spec, x, bottom, endX, top, 'stem');
+    line(cells, spec, x + 1, bottom, endX + 1, top + 1, 'shadow');
+    dot(cells, spec, x - 2, bottom - 2, 'leaf');
+    dot(cells, spec, x - 3, bottom - 3, 'leafLight');
+    dot(cells, spec, x + 2, bottom - 3, 'leaf');
+    dot(cells, spec, x + 3, bottom - 4, 'leafLight');
   }
 
-  function roundBloom(cells, cx, cy) {
-    rect(cells, cx - 2, cy - 1, 5, 3, 'petal');
-    rect(cells, cx - 1, cy - 2, 3, 5, 'petal');
-    dot(cells, cx - 2, cy - 2, 'petalLight');
-    dot(cells, cx + 2, cy - 2, 'petalLight');
-    dot(cells, cx - 3, cy, 'shadow');
-    dot(cells, cx + 3, cy, 'shadow');
-    rect(cells, cx - 1, cy, 2, 2, 'center');
-    dot(cells, cx + 1, cy + 1, 'center');
+  function roundBloom(cells, spec, cx, cy, scale) {
+    const s = scale || 1;
+    rect(cells, spec, cx - 2 * s, cy - s, 4 * s + 1, 2 * s + 1, 'petal');
+    rect(cells, spec, cx - s, cy - 2 * s, 2 * s + 1, 4 * s + 1, 'petal');
+    rect(cells, spec, cx - s, cy - s, 2 * s + 1, 2 * s + 1, 'petalLight');
+    dot(cells, spec, cx - 2 * s - 1, cy, 'shadow');
+    dot(cells, spec, cx + 2 * s + 1, cy + 1, 'shadow');
+    rect(cells, spec, cx, cy, Math.max(1, s), Math.max(1, s), 'center');
+    dot(cells, spec, cx + 1, cy + 1, 'center');
   }
 
-  function daisyBloom(cells, cx, cy) {
-    rect(cells, cx - 1, cy - 2, 3, 5, 'petal');
-    rect(cells, cx - 2, cy - 1, 5, 3, 'petalLight');
-    dot(cells, cx - 2, cy + 2, 'shadow');
-    dot(cells, cx + 2, cy + 1, 'shadow');
-    dot(cells, cx, cy, 'center');
+  function daisyBloom(cells, spec, cx, cy) {
+    rect(cells, spec, cx - 1, cy - 2, 3, 5, 'petal');
+    rect(cells, spec, cx - 2, cy - 1, 5, 3, 'petalLight');
+    dot(cells, spec, cx - 2, cy + 2, 'shadow');
+    dot(cells, spec, cx + 2, cy + 1, 'shadow');
+    rect(cells, spec, cx, cy, 1, 1, 'center');
   }
 
-  function dahliaBloom(cells, cx, cy) {
-    rect(cells, cx - 1, cy - 3, 3, 7, 'petal');
-    rect(cells, cx - 3, cy - 1, 7, 3, 'petal');
-    rect(cells, cx - 2, cy - 2, 5, 5, 'petalLight');
-    rect(cells, cx - 1, cy - 1, 3, 3, 'petal');
-    dot(cells, cx - 1, cy - 1, 'center');
-    dot(cells, cx + 1, cy, 'center');
-    dot(cells, cx + 2, cy + 2, 'shadow');
+  function dahliaBloom(cells, spec, cx, cy, size) {
+    const s = size || 1;
+    rect(cells, spec, cx - s, cy - 3, s * 2 + 1, 7, 'petal');
+    rect(cells, spec, cx - 3, cy - s, 7, s * 2 + 1, 'petal');
+    rect(cells, spec, cx - 2, cy - 2, 5, 5, 'petalLight');
+    rect(cells, spec, cx - 1, cy - 1, 3, 3, 'petal');
+    dot(cells, spec, cx - 1, cy - 1, 'center');
+    dot(cells, spec, cx + 1, cy, 'center');
+    dot(cells, spec, cx + 2, cy + 2, 'shadow');
   }
 
-  function amaranthPlume(cells, x, top, height) {
+  function amaranthPlume(cells, spec, x, top, height) {
     for (let i = 0; i < height; i++) {
       const y = top + i;
-      rect(cells, x, y, 2, 1, i % 2 ? 'petalLight' : 'petal');
-      dot(cells, x - 1, y, i % 3 ? 'petal' : 'shadow');
-      if (i % 2 === 0) dot(cells, x + 2, y, 'petal');
+      rect(cells, spec, x, y, 2, 1, i % 2 ? 'petalLight' : 'petal');
+      dot(cells, spec, x - 1, y, i % 3 ? 'petal' : 'shadow');
+      if (i % 2 === 0) dot(cells, spec, x + 2, y, 'petal');
     }
-    dot(cells, x, top + height, 'shadow');
+    dot(cells, spec, x, top + height, 'shadow');
   }
 
-  function lupineSpike(cells, x, top, height) {
+  function lupineSpike(cells, spec, x, top, height) {
     for (let i = 0; i < height; i++) {
       const y = top + i;
-      dot(cells, x, y, i % 2 ? 'petalLight' : 'petal');
-      if (i > 1) dot(cells, x - 1, y, 'petal');
-      if (i > 2 && i % 2 === 0) dot(cells, x + 1, y, 'petalLight');
+      dot(cells, spec, x, y, i % 2 ? 'petalLight' : 'petal');
+      if (i > 1) dot(cells, spec, x - 1, y, 'petal');
+      if (i > 2 && i % 2 === 0) dot(cells, spec, x + 1, y, 'petalLight');
+      if (i > 5 && i % 3 === 0) dot(cells, spec, x + 2, y, 'shadow');
     }
-    dot(cells, x + 1, top + height - 1, 'shadow');
   }
 
-  function cloverLeaf(cells, cx, cy) {
-    dot(cells, cx - 1, cy, 'leaf');
-    dot(cells, cx, cy - 1, 'leafLight');
-    dot(cells, cx + 1, cy, 'leaf');
-    dot(cells, cx, cy + 1, 'leaf');
-    dot(cells, cx + 1, cy + 1, 'shadow');
-    dot(cells, cx, cy, 'leafLight');
+  function cloverLeaf(cells, spec, cx, cy) {
+    dot(cells, spec, cx - 1, cy, 'leaf');
+    dot(cells, spec, cx, cy - 1, 'leafLight');
+    dot(cells, spec, cx + 1, cy, 'leaf');
+    dot(cells, spec, cx, cy + 1, 'leaf');
+    dot(cells, spec, cx, cy, 'leafLight');
+    dot(cells, spec, cx + 1, cy + 1, 'shadow');
   }
 
-  function cloverCluster(cells, cx, cy) {
-    rect(cells, cx, cy + 2, 1, 3, 'stem');
-    cloverLeaf(cells, cx - 1, cy);
-    cloverLeaf(cells, cx + 1, cy);
-    cloverLeaf(cells, cx, cy + 1);
-    dot(cells, cx, cy, 'center');
+  function cloverCluster(cells, spec, cx, cy) {
+    rect(cells, spec, cx, cy + 2, 1, 3, 'stem');
+    cloverLeaf(cells, spec, cx - 1, cy);
+    cloverLeaf(cells, spec, cx + 1, cy);
+    cloverLeaf(cells, spec, cx, cy + 1);
+    dot(cells, spec, cx, cy, 'center');
   }
 
   function cellsFor(spec) {
     const cells = [];
+    const baseY = spec.height - 5;
+    leafMound(cells, spec, baseY, spec.width > 20 ? 3 : 2);
+
     if (spec.shape === 'clover') {
-      leafBase(cells, 11);
-      rect(cells, 2, 12, 14, 2, 'shadow');
-      rect(cells, 3, 10, 12, 3, 'leaf');
-      rect(cells, 5, 9, 8, 2, 'leafLight');
-      cloverCluster(cells, 4, 8);
-      cloverCluster(cells, 8, 6);
-      cloverCluster(cells, 12, 8);
-      cloverCluster(cells, 15, 10);
-      dot(cells, 6, 7, 'petal');
-      dot(cells, 10, 5, 'petalLight');
+      rect(cells, spec, 2, spec.height - 3, spec.width - 4, 2, 'shadow');
+      rect(cells, spec, 3, spec.height - 4, spec.width - 6, 2, 'leaf');
+      [
+        [4, 7], [7, 5], [10, 6], [13, 7], [15, 9], [6, 9]
+      ].forEach(function (p) { cloverCluster(cells, spec, p[0], p[1]); });
+      dot(cells, spec, 9, 4, 'petalLight');
+      dot(cells, spec, 12, 5, 'petal');
       return cells;
     }
+
     if (spec.shape === 'amaranth') {
-      leafBase(cells, 11);
-      stem(cells, 5, 5, 12);
-      stem(cells, 9, 4, 12);
-      stem(cells, 13, 6, 12);
-      amaranthPlume(cells, 4, 3, 7);
-      amaranthPlume(cells, 8, 2, 8);
-      amaranthPlume(cells, 12, 4, 6);
+      [
+        [5, 5, baseY + 2, -1, 7],
+        [10, 3, baseY + 2, 0, 10],
+        [16, 5, baseY + 2, 1, 8]
+      ].forEach(function (p) {
+        plantStem(cells, spec, p[0], p[1], p[2], p[3]);
+        amaranthPlume(cells, spec, p[0] + p[3] - 1, p[1] - 2, p[4]);
+      });
       return cells;
     }
+
     if (spec.shape === 'cosmos') {
-      leafBase(cells, 10);
-      line(cells, 4, 11, 5, 5, 'stem');
-      line(cells, 8, 11, 8, 3, 'stem');
-      line(cells, 12, 11, 14, 6, 'stem');
-      daisyBloom(cells, 5, 5);
-      daisyBloom(cells, 8, 3);
-      daisyBloom(cells, 14, 6);
-      daisyBloom(cells, 12, 9);
+      [
+        [5, 6, baseY + 1, -1],
+        [9, 3, baseY + 1, 0],
+        [14, 6, baseY + 1, 2],
+        [16, 10, baseY + 1, 0]
+      ].forEach(function (p) {
+        plantStem(cells, spec, p[0], p[1], p[2], p[3]);
+        daisyBloom(cells, spec, p[0] + p[3], p[1]);
+      });
       return cells;
     }
+
     if (spec.shape === 'dahlias') {
-      leafBase(cells, 11);
-      stem(cells, 4, 6, 12);
-      stem(cells, 9, 4, 12);
-      stem(cells, 14, 6, 12);
-      dahliaBloom(cells, 4, 6);
-      dahliaBloom(cells, 9, 4);
-      dahliaBloom(cells, 14, 6);
-      roundBloom(cells, 12, 10);
+      [
+        [5, 7, baseY + 2, -1, 1],
+        [11, 5, baseY + 2, 0, 1],
+        [18, 7, baseY + 2, 1, 1],
+        [15, 11, baseY + 2, 0, 1]
+      ].forEach(function (p) {
+        plantStem(cells, spec, p[0], p[1], p[2], p[3]);
+        dahliaBloom(cells, spec, p[0] + p[3], p[1], p[4]);
+      });
       return cells;
     }
+
     if (spec.shape === 'lupine') {
-      leafBase(cells, 12);
-      stem(cells, 4, 5, 13);
-      stem(cells, 9, 3, 13);
-      stem(cells, 14, 6, 13);
-      lupineSpike(cells, 4, 3, 7);
-      lupineSpike(cells, 9, 1, 9);
-      lupineSpike(cells, 14, 4, 6);
-      dot(cells, 6, 10, 'petalLight');
-      dot(cells, 12, 11, 'petal');
+      [
+        [5, 5, baseY + 2, -1, 8],
+        [11, 2, baseY + 2, 0, 12],
+        [17, 6, baseY + 2, 1, 8]
+      ].forEach(function (p) {
+        plantStem(cells, spec, p[0], p[1], p[2], p[3]);
+        lupineSpike(cells, spec, p[0] + p[3], p[1] - 2, p[4]);
+      });
+      dot(cells, spec, 8, 15, 'petalLight');
+      dot(cells, spec, 14, 16, 'petal');
       return cells;
     }
-    leafBase(cells, 10);
-    stem(cells, 4, 6, 12);
-    stem(cells, 8, 4, 12);
-    stem(cells, 13, 6, 12);
-    roundBloom(cells, 4, 6);
-    roundBloom(cells, 8, 4);
-    roundBloom(cells, 13, 6);
-    daisyBloom(cells, 15, 10);
-    dot(cells, 6, 11, 'petalLight');
+
+    [
+      [5, 7, baseY + 2, -1],
+      [9, 5, baseY + 2, 0],
+      [14, 7, baseY + 2, 1],
+      [16, 11, baseY + 2, 0]
+    ].forEach(function (p, index) {
+      plantStem(cells, spec, p[0], p[1], p[2], p[3]);
+      if (index === 3) daisyBloom(cells, spec, p[0] + p[3], p[1]);
+      else roundBloom(cells, spec, p[0] + p[3], p[1], 1);
+    });
     return cells;
   }
 
@@ -297,8 +314,8 @@
       this._byId = {};
       this._specs.forEach((spec) => { this._byId[spec.id] = spec; });
       this.priceGrowth = 1.12;
-      this.width = WIDTH;
-      this.height = HEIGHT;
+      this.width = 20;
+      this.height = 16;
     }
 
     all() {
@@ -338,7 +355,7 @@
       const spec = this.get(id);
       return {
         heightVw: spec.heightVw,
-        aspect: WIDTH / HEIGHT
+        aspect: spec.width / spec.height
       };
     }
 
@@ -355,13 +372,14 @@
         .concat(['pixel-flower-art', 'pixel-flower-' + spec.id])
         .join(' ');
       el.dataset.flowerType = spec.id;
-      el.style.setProperty('--flower-w', WIDTH);
-      el.style.setProperty('--flower-h', HEIGHT);
+      el.style.setProperty('--flower-w', spec.width);
+      el.style.setProperty('--flower-h', spec.height);
+      el.style.setProperty('--flower-aspect', spec.width / spec.height);
       el.textContent = '';
       const inner = document.createElement('span');
       inner.className = 'pixel-flower-inner';
-      inner.style.setProperty('--flower-w', WIDTH);
-      inner.style.setProperty('--flower-h', HEIGHT);
+      inner.style.setProperty('--flower-w', spec.width);
+      inner.style.setProperty('--flower-h', spec.height);
       cellsFor(spec).forEach(function (cell) {
         const px = document.createElement('span');
         px.className = 'pixel-flower-cell';

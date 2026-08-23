@@ -1595,6 +1595,7 @@ select:focus,
 #edit-deck-panel {
   width: 100%;
   max-width: var(--content-width);
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1633,6 +1634,7 @@ select:focus,
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-width: 0;
   background: var(--surface);
   border-radius: var(--radius-lg);
   padding: clamp(18px, 4vw, 28px);
@@ -1642,8 +1644,13 @@ select:focus,
 #add-front,
 #add-back {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 200px;
   resize: vertical;
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   padding: 13px 15px;
   border-radius: var(--radius-md);
   border: 1.5px solid var(--line-strong);
@@ -1664,6 +1671,7 @@ select:focus,
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
 }
 
 .image-attach {
@@ -1764,6 +1772,11 @@ select:focus,
 
 .card-row-tag {
   flex-shrink: 0;
+  min-width: 0;
+  max-width: min(22ch, 36vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.68rem;
   font-weight: 700;
   color: var(--accent-dark);
@@ -2669,9 +2682,16 @@ select:focus,
 .store-row-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 5px;
   min-width: 0;
   flex: 1 1 auto;
+}
+
+.store-row-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .store-row-name {
@@ -2679,6 +2699,25 @@ select:focus,
   letter-spacing: 0.02em;
   color: var(--ink);
   text-transform: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.store-owned-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 44px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--accent-tint);
+  color: var(--ink);
+  font-size: 0.74rem;
+  font-weight: 900;
+  line-height: 1.1;
 }
 
 .store-row-meta {
@@ -2686,11 +2725,21 @@ select:focus,
   color: var(--ink-soft);
 }
 
+.store-row-meta:empty {
+  display: none;
+}
+
 .store-row-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.store-buy-btn {
+  white-space: nowrap;
 }
 
 .switch {
@@ -2780,6 +2829,10 @@ select:focus,
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
   padding: 2px 8px;
   border-radius: 999px;
   background: var(--accent-tint);
@@ -2787,6 +2840,12 @@ select:focus,
   color: var(--accent-dark);
   font-size: 0.72rem;
   font-weight: 700;
+}
+.tag-chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tag-chip[data-tone="0"] { background: #fde8ef; border-color: #f5b7c9; color: #9a2d52; }
 .tag-chip[data-tone="1"] { background: #fdeee0; border-color: #f3c39a; color: #9a4d18; }
@@ -2823,6 +2882,7 @@ select:focus,
 :root[data-theme="dark"] .tag-chip[data-tone="9"] { background: #1e2c1e; border-color: #4a6a4a; color: #c8ddc8; }
 
 .tag-chip button {
+  flex: 0 0 auto;
   min-height: 18px;
   width: 16px;
   padding: 0;
@@ -2922,19 +2982,36 @@ html.focus-mode .farm-tab-hint {
 }
 
 #pig-field.sell-mode .pen-fence,
-#pig-field.sell-mode .trough-object {
+#pig-field.sell-mode .trough-object,
+#pig-field.sell-mode .coop-object {
   pointer-events: auto;
   cursor: grab;
 }
 
+html.compact-layout:not(.farm-tab) #pig-field,
+html.compact-layout:not(.farm-tab) #pig-field.sell-mode {
+  z-index: 1;
+  pointer-events: none;
+}
+
+html.compact-layout:not(.farm-tab) #pig-field .animal-scatter,
+html.compact-layout:not(.farm-tab) #pig-field .pen-fence,
+html.compact-layout:not(.farm-tab) #pig-field .trough-object,
+html.compact-layout:not(.farm-tab) #pig-field .coop-object,
+html.compact-layout:not(.farm-tab) #pig-field .flower-object {
+  pointer-events: none;
+}
+
 .pen-fence,
-.trough-object {
+.trough-object,
+.coop-object {
   position: absolute;
   pointer-events: none;
   user-select: none;
 }
 .pen-fence svg,
-.trough-object svg {
+.trough-object svg,
+.coop-object svg {
   display: block;
   width: 100%;
   height: 100%;
@@ -3266,7 +3343,8 @@ body.drag-active {
    ========================================================================= */
 
 #text-prompt-overlay,
-#pixel-modal-overlay {
+#pixel-modal-overlay,
+#animal-detail-overlay {
   position: fixed;
   inset: 0;
   z-index: 100;
@@ -3280,14 +3358,16 @@ body.drag-active {
 }
 
 .text-prompt-card,
-.pixel-modal-card {
+.pixel-modal-card,
+.animal-detail-card {
   text-align: left;
   align-items: stretch;
   max-width: 380px;
 }
 
 .text-prompt-card h2,
-.pixel-modal-card h2 {
+.pixel-modal-card h2,
+.animal-detail-card h2 {
   text-align: center;
   font-size: 1.15rem;
 }
@@ -3308,6 +3388,46 @@ body.drag-active {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.animal-detail-body {
+  display: grid;
+  gap: 12px;
+}
+
+.animal-detail-sprite {
+  display: grid;
+  place-items: center;
+  min-height: 112px;
+}
+
+.animal-detail-name-field {
+  display: grid;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.animal-detail-name-field input {
+  width: 100%;
+}
+
+.animal-detail-stats {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.animal-detail-stats span {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-tint);
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.animal-detail-actions {
+  flex-wrap: wrap;
 }
 
 /* =========================================================================

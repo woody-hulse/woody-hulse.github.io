@@ -9,8 +9,8 @@
 <link rel="icon" type="image/x-icon" href="resources/favicon.ico?v=pixel-axis5-20260822">
 <link rel="apple-touch-icon" href="resources/favicon-180.png?v=pixel-axis5-20260822">
 
-<link rel="stylesheet" href="styles.css?v=pixel-path-passive-fence-20260823">
-<link rel="stylesheet" href="pixel-theme.css?v=pixel-path-passive-fence-20260823">
+<link rel="stylesheet" href="styles.css?v=pixel-followup-auth-20260823">
+<link rel="stylesheet" href="pixel-theme.css?v=pixel-followup-auth-20260823">
 
 <!-- Cloud auth + storage bridge (Firebase). All three are ES modules,
      deferred by the HTML spec by default; auth.js and cloud-store.js each use
@@ -418,6 +418,15 @@
       </div>
 
       <div class="settings-section">
+        <h3 class="settings-label" data-i18n="grassTexture">Grass</h3>
+        <div id="settings-grass-row" class="settings-theme-row settings-grass-row" role="radiogroup" data-i18n-aria="grassTexture" aria-label="Grass">
+          <button type="button" class="secondary-btn" data-grass-choice="grass" data-i18n="grassClassic">Classic</button>
+          <button type="button" class="secondary-btn" data-grass-choice="grass-meadow" data-i18n="grassMeadow">Meadow</button>
+          <button type="button" class="secondary-btn" data-grass-choice="grass-noise" data-i18n="grassNoise">Noised</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <h3 class="settings-label" data-i18n="foreground">Foreground</h3>
         <div id="settings-accent-swatches" class="swatch-grid"></div>
       </div>
@@ -459,10 +468,10 @@
     <span id="spinner-img" class="pig-spinner" data-pixel-sprite="pigs" data-pixel-state="walk" role="img" aria-label="Loading"></span>
   </div>
 
-<script src="js/i18n.js?v=pixel-path-passive-fence-20260823"></script>
-<script src="js/flowers.js?v=pixel-clover-20260823"></script>
-<script src="js/economy.js?v=pixel-path-passive-fence-20260823"></script>
-<script src="js/storage.js?v=pixel-passive-income-20260823"></script>
+<script src="js/i18n.js?v=pixel-followup-auth-20260823"></script>
+<script src="js/flowers.js?v=pixel-followup-auth-20260823"></script>
+<script src="js/economy.js?v=pixel-followup-auth-20260823"></script>
+<script src="js/storage.js?v=pixel-followup-auth-20260823"></script>
 <script src="js/srs.js?v=pixel-axis5-20260822"></script>
 <script src="js/stats.js?v=pixel-axis5-20260822"></script>
 <script src="js/images.js?v=pixel-axis5-20260822"></script>
@@ -470,8 +479,8 @@
 <script src="vendor/jszip.min.js?v=pixel-axis5-20260822"></script>
 <script src="vendor/sql-wasm.js?v=pixel-axis5-20260822"></script>
 <script src="js/anki-import.js?v=pixel-axis5-20260822"></script>
-<script src="js/pixel-sprites.js?v=pixel-axis2-sprites-20260822"></script>
-<script src="js/pigs.js?v=pixel-path-passive-fence-20260823"></script>
-<script src="js/app.js?v=pixel-path-passive-fence-20260823"></script>
+<script src="js/pixel-sprites.js?v=pixel-followup-auth-20260823"></script>
+<script src="js/pigs.js?v=pixel-followup-auth-20260823"></script>
+<script src="js/app.js?v=pixel-followup-auth-20260823"></script>
 </body>
 </html>

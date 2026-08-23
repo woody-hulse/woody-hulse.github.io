@@ -10,14 +10,19 @@ const ANIMAL_SPECIES_ORDER = ['chickens', 'sheep', 'ducks', 'retrievers', 'pigs'
 let _placementLookup = function () { return {}; };
 let _onPlacementChange = null;
 let _animalDrag = null;
-let _penTroughLookup = function () { return { pens: [], troughs: [] }; };
+let _penTroughLookup = function () { return { pens: [], troughs: [], coops: [], flowers: [] }; };
 let _onPensChange = null;
 let _onTroughsChange = null;
+let _onCoopsChange = null;
 let _onFlowersChange = null;
 let _penPlacing = null;
 let _storePlacing = null;
 let _fieldDrag = null;
 let _farmFocusMode = 'roam';
+let _fieldSortFrame = null;
+let _fieldSortContainer = null;
+let _fieldChipFrame = null;
+let _lastLayoutViewportKey = '';
 
 // Characteristic on-screen size (longer side) in vw. Bands sit below the
 // old ~4vw default so even a large sheep/pig reads smaller than today.
@@ -36,8 +41,14 @@ const SPECIES_HEIGHT_VW = {
   bison: { min: 2.85, max: 3.45 },
   giraffe: { min: 3.15, max: 3.85 }
 };
-const TROUGH_HEIGHT_VW = 1.72;
-const TROUGH_ASPECT = 2.05;
+const TROUGH_GRID_W = 22;
+const TROUGH_GRID_H = 12;
+const TROUGH_HEIGHT_VW = 1.56;
+const TROUGH_ASPECT = TROUGH_GRID_W / TROUGH_GRID_H;
+const COOP_GRID_W = 18;
+const COOP_GRID_H = 16;
+const COOP_HEIGHT_VW = 2.35;
+const COOP_ASPECT = COOP_GRID_W / COOP_GRID_H;
 const FLOWER_FALLBACK_HEIGHT_VW = 1.9;
 const FLOWER_FALLBACK_ASPECT = 18 / 16;
 
@@ -90,7 +101,7 @@ const PIG_ENCOURAGEMENTS_EN = [
   'Every card makes {name} a little sharper.',
   'Little steps, {name}.',
   'Well done, {name}!',
-  'Keep going, {name} — you\'re building something real.',
+  'Keep going, {name}. You\'re building something real.',
   'Good job, {name}.',
   'Nice work, {name}.',
   'You\'ve got this, {name}.'
@@ -101,7 +112,7 @@ const PIG_ENCOURAGEMENTS_FARM = [
   'Every cnarb makes {name} limpto sharmper.',
   'Limpto staep, {name}.',
   'WAELL DON {name}!',
-  'Keep gobing, {name} — you\'re building something rol.',
+  'Keep gobing, {name}. You\'re building something rol.',
   'Good yobs {name}.',
   '{name}, smaell me?'
 ];
@@ -117,11 +128,12 @@ function setAnimalPlacementHooks(lookup, onChange) {
   _onPlacementChange = typeof onChange === 'function' ? onChange : null;
 }
 
-function setPenTroughHooks(lookup, onPens, onTroughs, onFlowers) {
-  _penTroughLookup = typeof lookup === 'function' ? lookup : function () { return { pens: [], troughs: [] }; };
+function setPenTroughHooks(lookup, onPens, onTroughs, onFlowers, onCoops) {
+  _penTroughLookup = typeof lookup === 'function' ? lookup : function () { return { pens: [], troughs: [], coops: [], flowers: [] }; };
   _onPensChange = typeof onPens === 'function' ? onPens : null;
   _onTroughsChange = typeof onTroughs === 'function' ? onTroughs : null;
   _onFlowersChange = typeof onFlowers === 'function' ? onFlowers : null;
+  _onCoopsChange = typeof onCoops === 'function' ? onCoops : null;
 }
 
 function isCompactLayout() {
@@ -136,8 +148,8 @@ function isCompactLayout() {
 const FIELD_DRAG_SLOP_SQ = 64;
 
 function _stripMetrics() {
-  const vw = window.innerWidth || 1;
-  const vh = window.innerHeight || 1;
+  const vw = _layoutViewportWidth();
+  const vh = _layoutViewportHeight();
   const contentW = _contentWidthPx();
   if (isCompactLayout()) {
     const half = vw / 2;
@@ -219,6 +231,22 @@ function _navHeightPx() {
   return Number.isFinite(n) ? n : 68;
 }
 
+function _layoutViewportWidth() {
+  return document.documentElement.clientWidth || window.innerWidth || 1;
+}
+
+function _layoutViewportHeight() {
+  return document.documentElement.clientHeight || window.innerHeight || 1;
+}
+
+function _layoutViewportKey() {
+  return _layoutViewportWidth() + 'x' + _layoutViewportHeight();
+}
+
+function _isPinchZoomed() {
+  return !!(window.visualViewport && Math.abs((window.visualViewport.scale || 1) - 1) > 0.02);
+}
+
 function _contentWidthPx() {
   const raw = getComputedStyle(document.documentElement).getPropertyValue('--content-width');
   const n = parseFloat(raw);
@@ -250,21 +278,21 @@ function _instanceId(species, index) {
 }
 
 function _pxToVw(x) {
-  const vw = window.innerWidth || 1;
+  const vw = _layoutViewportWidth();
   return (x / vw) * 100;
 }
 
 function _pxToVh(y) {
-  const vh = window.innerHeight || 1;
+  const vh = _layoutViewportHeight();
   return (y / vh) * 100;
 }
 
 function _vwToPx(vw) {
-  return (Number(vw) || 0) / 100 * (window.innerWidth || 1);
+  return (Number(vw) || 0) / 100 * _layoutViewportWidth();
 }
 
 function _vhToPx(vh) {
-  return (Number(vh) || 0) / 100 * (window.innerHeight || 1);
+  return (Number(vh) || 0) / 100 * _layoutViewportHeight();
 }
 
 function _clampX(xPx, widthPx) {
@@ -279,7 +307,7 @@ function _clampX(xPx, widthPx) {
 }
 
 function _clampY(yPx, heightPx) {
-  const vh = window.innerHeight || 1;
+  const vh = _layoutViewportHeight();
   const top = _navHeightPx() + 10;
   const bottom = Math.max(top, vh - heightPx - 10);
   return Math.max(top, Math.min(yPx, bottom));
@@ -293,7 +321,7 @@ function _clampPoint(xPx, yPx, widthPx, heightPx) {
 function _pickScatterCanonical(sizePx, rng) {
   const onLeft = rng() < 0.5;
   const canX = (onLeft ? 0 : 50) + rng() * 50;
-  const vh = window.innerHeight;
+  const vh = _layoutViewportHeight();
   const top = _navHeightPx() + 10;
   const bottom = Math.max(top, vh - sizePx - 10);
   const y = top + rng() * Math.max(0, bottom - top);
@@ -309,23 +337,24 @@ function _applyCanonicalPlacement(img, leftVw, topVh, heightVw, flip) {
   img.dataset.canX = String(leftVw);
   img.dataset.topVh = String(topVh);
   _fitSpriteToSize(img, heightVw);
-  const boxW = img.offsetWidth || _vwToPx(heightVw);
-  const boxH = img.offsetHeight || boxW;
+  const aspect = parseFloat(img.dataset.spriteAspect) || 1;
+  const boxW = _vwToPx(heightVw * aspect);
+  const boxH = _vwToPx(heightVw);
   const xPx = _clampX(_canXToPx(leftVw, boxW), boxW);
   const yPx = _clampY(_vhToPx(topVh), boxH);
   img.style.left = _pxToVw(xPx) + 'vw';
   img.style.top = _pxToVh(yPx) + 'vh';
   _applyFlip(img, !!flip);
-  if (img.parentNode) sortFieldByY(img.parentNode);
 }
 
 function _readPlacement(img) {
-  const box = img.getBoundingClientRect();
-  const w = box.width || img.offsetWidth;
+  const heightVw = parseFloat(img.dataset.sizeVw) || parseFloat(img.style.height) || 2;
+  const aspect = parseFloat(img.dataset.spriteAspect) || 1;
+  const w = _vwToPx(heightVw * aspect);
   return {
-    leftVw: _pxToCanX(img.offsetLeft, w),
-    topVh: _pxToVh(img.offsetTop),
-    heightVw: parseFloat(img.dataset.sizeVw) || parseFloat(img.style.height) || _pxToVw(Math.max(img.offsetHeight, img.offsetWidth)),
+    leftVw: _pxToCanX(_cssLengthToPx(img.style.left), w),
+    topVh: _pxToVh(_cssLengthToPx(img.style.top)),
+    heightVw: heightVw,
     flip: img.dataset.flip === '1'
   };
 }
@@ -337,18 +366,53 @@ function _savePlacement(img) {
   _onPlacementChange(map);
 }
 
-function sortFieldByY(containerEl) {
+function _cssLengthToPx(value) {
+  if (!value) return 0;
+  const n = parseFloat(value);
+  if (!isFinite(n)) return 0;
+  if (String(value).indexOf('vw') !== -1) return _vwToPx(n);
+  if (String(value).indexOf('vh') !== -1) return _vhToPx(n);
+  return n;
+}
+
+function _fieldSortBottom(node) {
+  const top = _cssLengthToPx(node.style.top);
+  const height = _cssLengthToPx(node.style.height || (node.dataset.sizeVw ? node.dataset.sizeVw + 'vw' : '0px'));
+  return top + height;
+}
+
+function sortFieldByY(containerEl, opts) {
   if (!containerEl) return;
+  opts = opts || {};
   const nodes = Array.prototype.slice.call(containerEl.querySelectorAll('.field-object, .animal-scatter'));
   nodes.sort(function (a, b) {
-    const ay = a.getBoundingClientRect().bottom;
-    const by = b.getBoundingClientRect().bottom;
+    const ay = _fieldSortBottom(a);
+    const by = _fieldSortBottom(b);
     return ay - by;
   });
   nodes.forEach(function (node, i) {
     node.style.zIndex = String(10 + i);
   });
-  updatePenBoostChips(containerEl);
+  if (opts.updateChips !== false) requestPenBoostChipUpdate(containerEl);
+}
+
+function requestSortFieldByY(containerEl, opts) {
+  _fieldSortContainer = containerEl || _fieldSortContainer;
+  if (!_fieldSortContainer || _fieldSortFrame) return;
+  _fieldSortFrame = requestAnimationFrame(function () {
+    const target = _fieldSortContainer;
+    _fieldSortFrame = null;
+    _fieldSortContainer = null;
+    sortFieldByY(target, opts);
+  });
+}
+
+function requestPenBoostChipUpdate(containerEl) {
+  if (!containerEl || containerEl.id !== 'pig-field' || _fieldChipFrame) return;
+  _fieldChipFrame = requestAnimationFrame(function () {
+    _fieldChipFrame = null;
+    updatePenBoostChips(containerEl);
+  });
 }
 
 function _hasPixelSprites() {
@@ -383,11 +447,14 @@ function _setAnimalSpriteState(el, state, frame) {
 }
 
 function _movementBoundsForAnimal(el) {
-  const box = el.getBoundingClientRect();
-  const w = box.width || el.offsetWidth || _vwToPx(parseFloat(el.dataset.sizeVw) || 2);
-  const h = box.height || el.offsetHeight || w;
-  const cx = box.left + w / 2;
-  const cy = box.top + h / 2;
+  const size = parseFloat(el.dataset.sizeVw) || 2;
+  const aspect = parseFloat(el.dataset.spriteAspect) || 1;
+  const w = _vwToPx(size * aspect);
+  const h = _vwToPx(size);
+  const x = _cssLengthToPx(el.style.left);
+  const y = _cssLengthToPx(el.style.top);
+  const cx = x + w / 2;
+  const cy = y + h / 2;
   const state = _penTroughLookup() || {};
   const pens = state.pens || [];
   for (let i = 0; i < pens.length; i++) {
@@ -404,7 +471,7 @@ function _movementBoundsForAnimal(el) {
   }
   const side = _sideForX(cx);
   const top = _navHeightPx() + 10;
-  const bottom = (window.innerHeight || 1) - h - 10;
+  const bottom = _layoutViewportHeight() - h - 10;
   return {
     minX: side.x + 4,
     maxX: Math.max(side.x + 4, side.x + side.w - w - 4),
@@ -416,8 +483,8 @@ function _movementBoundsForAnimal(el) {
 function _walkAnimal(el) {
   if (!el || !el.parentNode || _farmFocusMode !== 'roam') return;
   const bounds = _movementBoundsForAnimal(el);
-  const fromX = el.offsetLeft;
-  const fromY = el.offsetTop;
+  const fromX = _cssLengthToPx(el.style.left);
+  const fromY = _cssLengthToPx(el.style.top);
   const seed = (parseInt(el.dataset.index, 10) || 1) + Date.now();
   const rng = _mulberry32(seed >>> 0);
   const dx = (rng() - 0.5) * Math.min(110, Math.max(24, bounds.maxX - bounds.minX));
@@ -435,12 +502,12 @@ function _walkAnimal(el) {
   el.style.transition = 'left ' + duration + 'ms steps(10, end), top ' + duration + 'ms steps(10, end)';
   el.style.left = _pxToVw(x) + 'vw';
   el.style.top = _pxToVh(y) + 'vh';
-  sortFieldByY(el.parentNode);
+  requestSortFieldByY(el.parentNode, { updateChips: false });
   el._animalLifeTimer = setTimeout(function () {
     el.classList.remove('walking');
     el.style.transition = '';
     _setAnimalSpriteState(el, 'stand', 0);
-    sortFieldByY(el.parentNode);
+    requestSortFieldByY(el.parentNode);
     _scheduleAnimalLife(el, 900 + Math.round(rng() * 1600));
   }, duration + 40);
 }
@@ -484,11 +551,15 @@ function _scheduleAnimalLife(el, delay) {
 }
 
 function setFarmFocusMode(mode) {
-  _farmFocusMode = (mode === 'sit' || mode === 'sleep') ? mode : 'roam';
+  const nextMode = (mode === 'sit' || mode === 'sleep') ? mode : 'roam';
   const field = document.getElementById('pig-field');
+  const sameMode = nextMode === _farmFocusMode;
+  _farmFocusMode = nextMode;
   if (_farmFocusMode === 'sleep') _cancelActiveFieldInteraction();
   if (field) {
     field.dataset.farmMode = _farmFocusMode;
+    if (sameMode && field.dataset.farmModeApplied === _farmFocusMode) return;
+    field.dataset.farmModeApplied = _farmFocusMode;
     Array.prototype.forEach.call(field.querySelectorAll('.animal-scatter'), function (el) {
       _scheduleAnimalLife(el, 0);
     });
@@ -513,17 +584,13 @@ function _spawnScatterAnimal(containerEl, species, index, opts) {
   img.dataset.instanceId = id;
   img.dataset.kind = 'animal';
 
+  containerEl.appendChild(img);
   if (placement && typeof placement.leftVw === 'number' && typeof placement.topVh === 'number') {
     _applyCanonicalPlacement(img, placement.leftVw, placement.topVh, heightVw, placement.flip);
   } else {
     const pos = _pickScatterCanonical(sizePx, rng);
     _applyCanonicalPlacement(img, pos.leftVw, pos.topVh, heightVw, rng() < 0.5);
   }
-
-  containerEl.appendChild(img);
-  _fitSpriteToSize(img, heightVw);
-  _applyCanonicalPlacement(img, parseFloat(img.dataset.canX), parseFloat(img.dataset.topVh), heightVw, img.dataset.flip === '1');
-  sortFieldByY(containerEl);
   _scheduleAnimalLife(img, 300 + Math.round(rng() * 1200));
 
   return img;
@@ -531,6 +598,7 @@ function _spawnScatterAnimal(containerEl, species, index, opts) {
 
 async function initScatteredAnimals(containerEl, animals) {
   containerEl.innerHTML = '';
+  delete containerEl.dataset.farmModeApplied;
   if (!_hasPixelSprites()) return;
   const counts = animals || {};
   for (let s = 0; s < ANIMAL_SPECIES_ORDER.length; s++) {
@@ -549,7 +617,7 @@ async function initScatteredAnimals(containerEl, animals) {
 async function addScatterAnimal(containerEl, species, index) {
   if (!_hasPixelSprites()) return null;
   const img = _spawnScatterAnimal(containerEl, species, index);
-  sortFieldByY(containerEl);
+  requestSortFieldByY(containerEl);
   return img;
 }
 
@@ -558,7 +626,7 @@ async function addScatterAnimalAt(containerEl, species, index, placement) {
   const img = _spawnScatterAnimal(containerEl, species, index, {
     placement: placement
   });
-  sortFieldByY(containerEl);
+  requestSortFieldByY(containerEl);
   return img;
 }
 
@@ -606,7 +674,7 @@ function removeScatterAnimal(containerEl, species, instanceId) {
       _onPlacementChange(compactAnimalPlacements(_placementLookup() || {}, species, removedIndex));
     }
   }
-  sortFieldByY(containerEl);
+  requestSortFieldByY(containerEl);
   return true;
 }
 
@@ -679,6 +747,17 @@ function _flowerAtPoint(x, y) {
   return hit;
 }
 
+function _coopAtPoint(x, y) {
+  const field = document.getElementById('pig-field');
+  if (!field || field.classList.contains('focus-hidden') || _fieldInteractionLocked()) return null;
+  let hit = null;
+  Array.prototype.forEach.call(field.querySelectorAll('.coop-object'), function (el) {
+    const r = el.getBoundingClientRect();
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) hit = el;
+  });
+  return hit;
+}
+
 function _penFenceAtPoint(x, y) {
   const field = document.getElementById('pig-field');
   if (!field || field.classList.contains('focus-hidden') || _fieldInteractionLocked()) return null;
@@ -697,7 +776,7 @@ function _endAnimalDrag(save) {
   const moved = _animalDrag.moved;
   img.classList.remove('dragging');
   if (save && moved) _savePlacement(img);
-  sortFieldByY(img.parentNode);
+  requestSortFieldByY(img.parentNode);
   _scheduleAnimalLife(img, 600);
   _animalDrag = null;
 }
@@ -706,7 +785,7 @@ function _endFieldDrag(save) {
   if (!_fieldDrag) return;
   const drag = _fieldDrag;
   _fieldDrag = null;
-  if (drag.kind === 'trough' || drag.kind === 'flower') {
+  if (drag.kind === 'trough' || drag.kind === 'flower' || drag.kind === 'coop') {
     drag.el.classList.remove('dragging');
     if (drag.kind === 'trough' && save && drag.moved && _onTroughsChange) {
       const state = _penTroughLookup() || {};
@@ -714,8 +793,8 @@ function _endFieldDrag(save) {
         if (tr.id !== drag.id) return tr;
         return {
           id: tr.id,
-          leftVw: _pxToCanX(drag.el.offsetLeft, drag.widthPx),
-          topVh: _pxToVh(drag.el.offsetTop),
+          leftVw: _pxToCanX(_cssLengthToPx(drag.el.style.left), drag.widthPx),
+          topVh: _pxToVh(_cssLengthToPx(drag.el.style.top)),
           heightVw: parseFloat(drag.el.dataset.sizeVw) || parseFloat(drag.el.style.height) || tr.heightVw,
           paid: tr.paid
         };
@@ -729,15 +808,33 @@ function _endFieldDrag(save) {
         return {
           id: fl.id,
           type: fl.type,
-          leftVw: _pxToCanX(drag.el.offsetLeft, drag.widthPx),
-          topVh: _pxToVh(drag.el.offsetTop),
+          leftVw: _pxToCanX(_cssLengthToPx(drag.el.style.left), drag.widthPx),
+          topVh: _pxToVh(_cssLengthToPx(drag.el.style.top)),
           heightVw: parseFloat(drag.el.dataset.sizeVw) || parseFloat(drag.el.style.height) || fl.heightVw,
           paid: fl.paid
         };
       });
       _onFlowersChange(flowers);
     }
-    sortFieldByY(drag.el.parentNode);
+    if (drag.kind === 'coop' && save && drag.moved && _onCoopsChange) {
+      const state = _penTroughLookup() || {};
+      const coops = (state.coops || []).map(function (coop) {
+        if (coop.id !== drag.id) return coop;
+        return {
+          id: coop.id,
+          leftVw: _pxToCanX(_cssLengthToPx(drag.el.style.left), drag.widthPx),
+          topVh: _pxToVh(_cssLengthToPx(drag.el.style.top)),
+          heightVw: parseFloat(drag.el.dataset.sizeVw) || parseFloat(drag.el.style.height) || coop.heightVw,
+          paid: coop.paid,
+          eggValue: coop.eggValue || 0,
+          eggCarry: coop.eggCarry || 0,
+          totalEggValue: coop.totalEggValue || 0,
+          lastEggAt: coop.lastEggAt || 0
+        };
+      });
+      _onCoopsChange(coops);
+    }
+    requestSortFieldByY(drag.el.parentNode);
     return;
   }
   if (drag.kind === 'pen' && save && drag.moved && _onPensChange) {
@@ -799,7 +896,11 @@ function bindAnimalFieldDrag() {
   if (!document.documentElement.dataset.fieldRelayoutBound) {
     document.documentElement.dataset.fieldRelayoutBound = '1';
     let _relayoutTimer = null;
+    _lastLayoutViewportKey = _layoutViewportKey();
     window.addEventListener('resize', function () {
+      const key = _layoutViewportKey();
+      if (_isPinchZoomed() || key === _lastLayoutViewportKey) return;
+      _lastLayoutViewportKey = key;
       if (_relayoutTimer) clearTimeout(_relayoutTimer);
       _relayoutTimer = setTimeout(function () { relayoutField(); }, 80);
     });
@@ -826,8 +927,8 @@ function bindAnimalFieldDrag() {
         img: img,
         startX: e.clientX,
         startY: e.clientY,
-        origLeft: img.offsetLeft,
-        origTop: img.offsetTop,
+        origLeft: _cssLengthToPx(img.style.left),
+        origTop: _cssLengthToPx(img.style.top),
         widthPx: box.width || img.offsetWidth,
         heightPx: box.height || img.offsetHeight,
         pointerId: e.pointerId,
@@ -844,8 +945,8 @@ function bindAnimalFieldDrag() {
         id: trough.dataset.id,
         startX: e.clientX,
         startY: e.clientY,
-        origLeft: trough.offsetLeft,
-        origTop: trough.offsetTop,
+        origLeft: _cssLengthToPx(trough.style.left),
+        origTop: _cssLengthToPx(trough.style.top),
         widthPx: box.width,
         heightPx: box.height,
         pointerId: e.pointerId,
@@ -862,8 +963,26 @@ function bindAnimalFieldDrag() {
         id: flower.dataset.id,
         startX: e.clientX,
         startY: e.clientY,
-        origLeft: flower.offsetLeft,
-        origTop: flower.offsetTop,
+        origLeft: _cssLengthToPx(flower.style.left),
+        origTop: _cssLengthToPx(flower.style.top),
+        widthPx: box.width,
+        heightPx: box.height,
+        pointerId: e.pointerId,
+        moved: false
+      };
+      return;
+    }
+    const coop = _coopAtPoint(e.clientX, e.clientY);
+    if (coop) {
+      const box = coop.getBoundingClientRect();
+      _fieldDrag = {
+        kind: 'coop',
+        el: coop,
+        id: coop.dataset.id,
+        startX: e.clientX,
+        startY: e.clientY,
+        origLeft: _cssLengthToPx(coop.style.left),
+        origTop: _cssLengthToPx(coop.style.top),
         widthPx: box.width,
         heightPx: box.height,
         pointerId: e.pointerId,
@@ -879,8 +998,8 @@ function bindAnimalFieldDrag() {
       let minL = Infinity;
       let minT = Infinity;
       Array.prototype.forEach.call(fences, function (el) {
-        minL = Math.min(minL, el.offsetLeft);
-        minT = Math.min(minT, el.offsetTop);
+        minL = Math.min(minL, _cssLengthToPx(el.style.left));
+        minT = Math.min(minT, _cssLengthToPx(el.style.top));
       });
       _fieldDrag = {
         kind: 'pen',
@@ -921,7 +1040,7 @@ function bindAnimalFieldDrag() {
       const img = _animalDrag.img;
       img.style.left = _pxToVw(clamped.x) + 'vw';
       img.style.top = _pxToVh(clamped.y) + 'vh';
-      sortFieldByY(img.parentNode);
+      requestSortFieldByY(img.parentNode, { updateChips: false });
       return;
     }
     if (!_fieldDrag) return;
@@ -932,7 +1051,7 @@ function bindAnimalFieldDrag() {
     _fieldDrag.moved = true;
     window.StudyFieldGestureMoved = true;
     e.preventDefault();
-    if (_fieldDrag.kind === 'trough' || _fieldDrag.kind === 'flower') {
+    if (_fieldDrag.kind === 'trough' || _fieldDrag.kind === 'flower' || _fieldDrag.kind === 'coop') {
       _fieldDrag.el.classList.add('dragging');
       const clamped = _clampPoint(
         _fieldDrag.origLeft + dx,
@@ -958,7 +1077,7 @@ function bindAnimalFieldDrag() {
         topVh: _pxToVh(clamped.y),
         widthVw: pen.widthVw,
         heightVh: pen.heightVh
-      });
+      }, { updateChips: false });
     }
   }, { capture: true, passive: false });
 
@@ -1013,7 +1132,7 @@ function _vFenceSvg(lengthVw, side) {
     parts.push('<span class="pixel-fence-rail rail-' + i + '" style="left:' + x + '%"></span>');
   });
   for (let i = 0; i < n; i++) {
-    const y = n === 1 ? 50 : (i / (n - 1)) * 100;
+    const y = n === 1 ? 50 : 6 + (i / (n - 1)) * 88;
     parts.push('<span class="pixel-fence-post" style="top:' + y + '%"></span>');
   }
   parts.push('</span>');
@@ -1025,16 +1144,101 @@ function _fenceSvg(kind, lengthVw) {
   return _hFenceSvg(lengthVw);
 }
 
+function _cellStyle(color) {
+  if (color.indexOf('--') === 0) return 'var(' + color + ')';
+  return color;
+}
+
+function _addCell(cells, x, y, color) {
+  if (x < 0 || y < 0 || x >= TROUGH_GRID_W || y >= TROUGH_GRID_H) return;
+  cells.push({ x: x, y: y, color: color });
+}
+
+function _addRect(cells, x, y, w, h, color) {
+  for (let yy = y; yy < y + h; yy++) {
+    for (let xx = x; xx < x + w; xx++) _addCell(cells, xx, yy, color);
+  }
+}
+
+function _troughCells() {
+  const cells = [];
+  _addRect(cells, 4, 9, 4, 2, '--pixel-wood-dark');
+  _addRect(cells, 15, 9, 4, 2, '--pixel-wood-dark');
+  _addRect(cells, 5, 10, 2, 1, '--pixel-line');
+  _addRect(cells, 16, 10, 2, 1, '--pixel-line');
+  _addRect(cells, 2, 4, 18, 2, '--pixel-line');
+  _addRect(cells, 3, 3, 16, 1, '--pixel-wood-light');
+  _addRect(cells, 4, 4, 14, 1, '--pixel-water');
+  _addRect(cells, 7, 4, 5, 1, '#9fd6e3');
+  _addRect(cells, 2, 6, 18, 4, '--pixel-line');
+  _addRect(cells, 3, 6, 16, 1, '--pixel-wood-light');
+  _addRect(cells, 3, 7, 16, 2, '--pixel-wood');
+  _addRect(cells, 3, 9, 16, 1, '--pixel-wood-dark');
+  _addRect(cells, 4, 7, 2, 1, '--pixel-wood-light');
+  _addRect(cells, 14, 8, 3, 1, '--pixel-wood-dark');
+  _addCell(cells, 1, 5, '--pixel-line');
+  _addCell(cells, 20, 5, '--pixel-line');
+  _addCell(cells, 2, 10, 'rgba(42, 27, 20, 0.26)');
+  _addRect(cells, 8, 10, 7, 1, 'rgba(42, 27, 20, 0.22)');
+  _addCell(cells, 19, 10, 'rgba(42, 27, 20, 0.22)');
+  return cells;
+}
+
 function _troughSvg() {
-  return '<span class="pixel-trough-art" aria-hidden="true">' +
-    '<span class="trough-leg leg-left"></span>' +
-    '<span class="trough-leg leg-right"></span>' +
-    '<span class="trough-bowl"></span>' +
-    '<span class="trough-water water-a"></span>' +
-    '<span class="trough-water water-b"></span>' +
-    '<span class="trough-rim rim-top"></span>' +
-    '<span class="trough-rim rim-front"></span>' +
-    '</span>';
+  const parts = ['<span class="pixel-trough-art" aria-hidden="true" style="--trough-w:' + TROUGH_GRID_W + ';--trough-h:' + TROUGH_GRID_H + '">'];
+  _troughCells().forEach(function (cell) {
+    parts.push(
+      '<span class="pixel-trough-cell" style="grid-column:' + (cell.x + 1) +
+      ';grid-row:' + (cell.y + 1) + ';background:' + _cellStyle(cell.color) + '"></span>'
+    );
+  });
+  parts.push('</span>');
+  return parts.join('');
+}
+
+function _coopCell(cells, x, y, color) {
+  if (x < 0 || y < 0 || x >= COOP_GRID_W || y >= COOP_GRID_H) return;
+  cells.push({ x: x, y: y, color: color });
+}
+
+function _coopRect(cells, x, y, w, h, color) {
+  for (let yy = y; yy < y + h; yy++) {
+    for (let xx = x; xx < x + w; xx++) _coopCell(cells, xx, yy, color);
+  }
+}
+
+function _coopCells() {
+  const cells = [];
+  _coopRect(cells, 3, 5, 12, 8, '--pixel-line');
+  _coopRect(cells, 4, 6, 10, 6, '--pixel-wood');
+  _coopRect(cells, 4, 6, 10, 1, '--pixel-wood-light');
+  _coopRect(cells, 2, 4, 14, 2, '--pixel-line');
+  _coopRect(cells, 3, 3, 12, 1, '--pixel-wood-dark');
+  _coopRect(cells, 5, 2, 8, 1, '--pixel-wood-dark');
+  _coopRect(cells, 7, 1, 4, 1, '--pixel-wood-dark');
+  _coopRect(cells, 6, 8, 4, 5, '--pixel-line');
+  _coopRect(cells, 7, 9, 2, 4, '--pixel-wood-dark');
+  _coopCell(cells, 9, 10, '--pixel-wood-light');
+  _coopRect(cells, 11, 7, 2, 2, '--pixel-paper');
+  _coopCell(cells, 11, 7, '--pixel-water');
+  _coopRect(cells, 3, 13, 12, 1, 'rgba(42, 27, 20, 0.28)');
+  _coopRect(cells, 2, 14, 14, 1, 'rgba(42, 27, 20, 0.20)');
+  _coopCell(cells, 13, 12, '#fff0b8');
+  _coopCell(cells, 14, 12, '#f5d889');
+  _coopCell(cells, 12, 13, '#fff0b8');
+  return cells;
+}
+
+function _coopSvg() {
+  const parts = ['<span class="pixel-coop-art" aria-hidden="true" style="--coop-w:' + COOP_GRID_W + ';--coop-h:' + COOP_GRID_H + '">'];
+  _coopCells().forEach(function (cell) {
+    parts.push(
+      '<span class="pixel-coop-cell" style="grid-column:' + (cell.x + 1) +
+      ';grid-row:' + (cell.y + 1) + ';background:' + _cellStyle(cell.color) + '"></span>'
+    );
+  });
+  parts.push('</span>');
+  return parts.join('');
 }
 
 function _flowerSize(type) {
@@ -1058,8 +1262,8 @@ function _paintFlower(el, type) {
 function _setStorePreviewAt(x, y) {
   if (!_storePlacing || !_storePlacing.preview) return;
   const preview = _storePlacing.preview;
-  const width = preview.offsetWidth || _storePlacing.widthPx || 32;
-  const height = preview.offsetHeight || _storePlacing.heightPx || width;
+  const width = _storePlacing.widthPx || preview.offsetWidth || 32;
+  const height = _storePlacing.heightPx || preview.offsetHeight || width;
   const clamped = _clampPoint(x - width / 2, y - height / 2, width, height);
   preview.style.left = clamped.x + 'px';
   preview.style.top = clamped.y + 'px';
@@ -1089,12 +1293,71 @@ function _placementPayload(extra) {
   }, extra || {});
 }
 
+function _storePayloadExtra(extra, index) {
+  return typeof extra === 'function' ? extra(index || 0) : (extra || {});
+}
+
+function _placementPayloadFromRect(rect, extra, index) {
+  if (!_storePlacing || !rect) return null;
+  return Object.assign({
+    leftVw: _pxToCanX(rect.x, rect.widthPx),
+    topVh: _pxToVh(rect.y),
+    heightVw: _storePlacing.heightVw
+  }, _storePayloadExtra(extra, index));
+}
+
+function _batchOffsets(count, radiusPx) {
+  count = Math.max(1, count || 1);
+  if (count === 1) return [{ x: 0, y: 0 }];
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const r = radiusPx * Math.sqrt((i + 0.5) / count);
+    const a = i * golden;
+    out.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+  }
+  return out;
+}
+
+function _placementBatchPayloads(extra, quantity) {
+  const last = _storePlacing && _storePlacing.last;
+  if (!last) return [];
+  const count = Math.max(1, quantity || 1);
+  const centerX = last.x + last.widthPx / 2;
+  const centerY = last.y + last.heightPx / 2;
+  const radius = _storePlacing.batchRadiusPx || Math.max(28, Math.min(84, Math.max(last.widthPx, last.heightPx) * 2.2));
+  return _batchOffsets(count, radius).map(function (offset, i) {
+    const clamped = _clampPoint(
+      centerX + offset.x - last.widthPx / 2,
+      centerY + offset.y - last.heightPx / 2,
+      last.widthPx,
+      last.heightPx
+    );
+    return _placementPayloadFromRect({
+      x: clamped.x,
+      y: clamped.y,
+      widthPx: last.widthPx,
+      heightPx: last.heightPx
+    }, extra, i);
+  }).filter(Boolean);
+}
+
+function _finishStorePlacement(payload) {
+  if (!_storePlacing) return;
+  const placing = _storePlacing;
+  placing.cancelled = false;
+  cancelStorePlacement();
+  if (payload && placing.onConfirm) placing.onConfirm(payload);
+}
+
 function cancelStorePlacement() {
   if (!_storePlacing) return;
   const placing = _storePlacing;
   _storePlacing = null;
   window.removeEventListener('pointermove', placing.onMove);
   window.removeEventListener('pointerdown', placing.onDown, true);
+  window.removeEventListener('pointerup', placing.onUp, true);
+  window.removeEventListener('pointercancel', placing.onCancelPointer, true);
   window.removeEventListener('keydown', placing.onKey);
   const layer = document.getElementById('field-place-layer');
   if (layer) layer.hidden = true;
@@ -1123,12 +1386,51 @@ function _startStorePlacement(opts) {
   _storePlacing = {
     preview: opts.preview,
     heightVw: opts.heightVw,
+    widthPx: _cssLengthToPx(opts.preview.style.width) || null,
+    heightPx: _cssLengthToPx(opts.preview.style.height) || null,
     priceText: opts.priceText,
     onConfirm: opts.onConfirm,
     onCancel: opts.onCancel,
+    payload: opts.payload,
+    quantity: Math.max(1, opts.quantity || 1),
+    batchRadiusPx: opts.batchRadiusPx,
+    dragToPlace: !!opts.dragToPlace,
+    stamps: [],
+    dragging: false,
+    pointerId: null,
+    didDrag: false,
+    lastStamp: null,
     last: null
   };
   _storePlacing.onMove = function (e) {
+    if (_storePlacing && _storePlacing.dragging) {
+      if (_storePlacing.pointerId != null && e.pointerId !== _storePlacing.pointerId) return;
+      const dx = e.clientX - _storePlacing.startX;
+      const dy = e.clientY - _storePlacing.startY;
+      if (!_storePlacing.didDrag && (dx * dx + dy * dy) < FIELD_DRAG_SLOP_SQ) {
+        _setStorePreviewAt(e.clientX, e.clientY);
+        return;
+      }
+      _storePlacing.didDrag = true;
+      e.preventDefault();
+      _setStorePreviewAt(e.clientX, e.clientY);
+      const spacing = _storePlacing.stampSpacingPx || 34;
+      const last = _storePlacing.lastStamp;
+      if (!last || Math.pow(e.clientX - last.x, 2) + Math.pow(e.clientY - last.y, 2) >= spacing * spacing) {
+        const n = _storePlacing.stamps.length;
+        if (n < _storePlacing.quantity && !_inCenterColumn(e.clientX)) {
+          const payload = _placementPayload(_storePayloadExtra(_storePlacing.payload, n));
+          if (payload) {
+            _storePlacing.stamps.push(payload);
+            _storePlacing.lastStamp = { x: e.clientX, y: e.clientY };
+          }
+        }
+        if (_storePlacing.stamps.length >= _storePlacing.quantity) {
+          _finishStorePlacement(_storePlacing.stamps.slice(0, _storePlacing.quantity));
+        }
+      }
+      return;
+    }
     _setStorePreviewAt(e.clientX, e.clientY);
   };
   _storePlacing.onDown = function (e) {
@@ -1140,19 +1442,51 @@ function _startStorePlacement(opts) {
       return;
     }
     e.preventDefault();
-    const placing = _storePlacing;
-    const payload = _placementPayload(opts.payload);
-    placing.cancelled = false;
-    cancelStorePlacement();
-    if (payload && placing.onConfirm) placing.onConfirm(payload);
+    if (_storePlacing.dragToPlace && _storePlacing.quantity > 1) {
+      _storePlacing.dragging = true;
+      _storePlacing.pointerId = e.pointerId;
+      _storePlacing.startX = e.clientX;
+      _storePlacing.startY = e.clientY;
+      _storePlacing.didDrag = false;
+      _storePlacing.stamps = [];
+      _storePlacing.lastStamp = null;
+      _setStorePreviewAt(e.clientX, e.clientY);
+      return;
+    }
+    const payload = _storePlacing.quantity > 1
+      ? _placementBatchPayloads(_storePlacing.payload, _storePlacing.quantity)
+      : _placementPayload(_storePayloadExtra(_storePlacing.payload, 0));
+    _finishStorePlacement(payload);
+  };
+  _storePlacing.onUp = function (e) {
+    if (!_storePlacing || !_storePlacing.dragging) return;
+    if (_storePlacing.pointerId != null && e.pointerId !== _storePlacing.pointerId) return;
+    e.preventDefault();
+    _setStorePreviewAt(e.clientX, e.clientY);
+    let payload;
+    if (_storePlacing.didDrag && _storePlacing.stamps.length) {
+      payload = _storePlacing.stamps.slice(0, _storePlacing.quantity);
+      if (payload.length < _storePlacing.quantity) {
+        payload = payload.concat(_placementBatchPayloads(_storePlacing.payload, _storePlacing.quantity - payload.length));
+      }
+      payload = payload.slice(0, _storePlacing.quantity);
+    } else {
+      payload = _placementBatchPayloads(_storePlacing.payload, _storePlacing.quantity);
+    }
+    _finishStorePlacement(payload);
+  };
+  _storePlacing.onCancelPointer = function () {
+    if (_storePlacing && _storePlacing.dragging) cancelStorePlacement();
   };
   _storePlacing.onKey = function (e) {
     if (e.key === 'Escape') cancelStorePlacement();
   };
   window.addEventListener('pointermove', _storePlacing.onMove);
   window.addEventListener('pointerdown', _storePlacing.onDown, true);
+  window.addEventListener('pointerup', _storePlacing.onUp, true);
+  window.addEventListener('pointercancel', _storePlacing.onCancelPointer, true);
   window.addEventListener('keydown', _storePlacing.onKey);
-  _setStorePreviewAt(opts.clientX || (window.innerWidth || 1) / 2, opts.clientY || (_navHeightPx() + 80));
+  _setStorePreviewAt(opts.clientX || _layoutViewportWidth() / 2, opts.clientY || (_navHeightPx() + 80));
   return true;
 }
 
@@ -1167,13 +1501,18 @@ function startAnimalPlacement(containerEl, species, index, opts) {
   return _startStorePlacement({
     preview: preview,
     heightVw: heightVw,
+    quantity: opts.quantity,
+    batchRadiusPx: opts.batchRadiusPx,
     clientX: opts.clientX,
     clientY: opts.clientY,
     banner: opts.banner,
     priceText: opts.priceText,
     onConfirm: opts.onConfirm,
     onCancel: opts.onCancel,
-    payload: { flip: rng() < 0.5 }
+    payload: function (i) {
+      const r = _rngForAnimal(species, index + (i || 0));
+      return { flip: r() < 0.5 };
+    }
   });
 }
 
@@ -1199,6 +1538,29 @@ function startTroughPlacement(containerEl, trough, opts) {
   });
 }
 
+function startCoopPlacement(containerEl, coop, opts) {
+  if (!containerEl) return false;
+  opts = opts || {};
+  coop = coop || {};
+  const heightVw = COOP_HEIGHT_VW;
+  const preview = document.createElement('div');
+  preview.className = 'coop-object field-object';
+  preview.style.height = heightVw + 'vw';
+  preview.style.width = (heightVw * COOP_ASPECT) + 'vw';
+  preview.innerHTML = _coopSvg();
+  return _startStorePlacement({
+    preview: preview,
+    heightVw: heightVw,
+    clientX: opts.clientX,
+    clientY: opts.clientY,
+    banner: opts.banner,
+    priceText: opts.priceText,
+    onConfirm: opts.onConfirm,
+    onCancel: opts.onCancel,
+    payload: { id: coop.id, paid: coop.paid, eggValue: coop.eggValue || 0, eggCarry: coop.eggCarry || 0, totalEggValue: coop.totalEggValue || 0, lastEggAt: coop.lastEggAt || 0 }
+  });
+}
+
 function startFlowerPlacement(containerEl, flower, opts) {
   if (!containerEl) return false;
   flower = flower || {};
@@ -1213,18 +1575,22 @@ function startFlowerPlacement(containerEl, flower, opts) {
   return _startStorePlacement({
     preview: preview,
     heightVw: heightVw,
+    quantity: opts.quantity,
+    dragToPlace: opts.dragToPlace,
+    batchRadiusPx: opts.batchRadiusPx,
     clientX: opts.clientX,
     clientY: opts.clientY,
     banner: opts.banner,
     priceText: opts.priceText,
     onConfirm: opts.onConfirm,
     onCancel: opts.onCancel,
-    payload: { id: flower.id, type: flower.type, paid: flower.paid }
+    payload: { type: flower.type, paid: flower.paid }
   });
 }
 
-function _applyPenRect(container, pen) {
+function _applyPenRect(container, pen, opts) {
   if (!container) return;
+  opts = opts || {};
   const preview = container.id === 'pen-preview';
   const disp = preview
     ? { x: 0, y: 0, w: container.offsetWidth || 8, h: container.offsetHeight || 8 }
@@ -1236,7 +1602,7 @@ function _applyPenRect(container, pen) {
   const existing = container.querySelectorAll('.pen-fence[data-pen-id="' + pen.id + '"]');
   const map = {};
   Array.prototype.forEach.call(existing, function (el) { map[el.dataset.side] = el; });
-  const thickVh = FENCE_H_VW * ((window.innerWidth || 1) / (window.innerHeight || 1));
+  const thickVh = FENCE_H_VW * (_layoutViewportWidth() / _layoutViewportHeight());
   const postPx = _vwToPx(FENCE_V_VW);
   const railPx = _vwToPx(FENCE_H_VW);
   const sides = [
@@ -1268,21 +1634,21 @@ function _applyPenRect(container, pen) {
       else el.style.height = s.height + 'vw';
     }
     const len = (s.side === 'left' || s.side === 'right')
-      ? heightVh * ((window.innerHeight || 1) / (window.innerWidth || 1))
+      ? heightVh * (_layoutViewportHeight() / _layoutViewportWidth())
       : widthVw;
     el.innerHTML = _fenceSvg(s.side, len);
     el.dataset.posts = String(_postCount(len));
   });
-  updatePenBoostChips(container, pen);
+  if (opts.updateChips !== false) updatePenBoostChips(container, pen);
 }
 
 function renderPensAndTroughs(containerEl) {
   if (!containerEl) return;
-  Array.prototype.forEach.call(containerEl.querySelectorAll('.pen-fence, .trough-object, .flower-object, .pen-boost-chip'), function (el) {
+  Array.prototype.forEach.call(containerEl.querySelectorAll('.pen-fence, .trough-object, .coop-object, .flower-object, .pen-boost-chip'), function (el) {
     el.parentNode.removeChild(el);
   });
   const state = _penTroughLookup() || {};
-  (state.pens || []).forEach(function (pen) { _applyPenRect(containerEl, pen); });
+  (state.pens || []).forEach(function (pen) { _applyPenRect(containerEl, pen, { updateChips: false }); });
   (state.troughs || []).forEach(function (tr) {
     const el = document.createElement('div');
     el.className = 'trough-object field-object';
@@ -1295,6 +1661,21 @@ function renderPensAndTroughs(containerEl) {
     el.style.height = hVw + 'vw';
     el.style.width = (hVw * TROUGH_ASPECT) + 'vw';
     el.innerHTML = _troughSvg();
+    containerEl.appendChild(el);
+  });
+  (state.coops || []).forEach(function (coop) {
+    const hVw = (typeof coop.heightVw === 'number' && coop.heightVw <= 3.2) ? coop.heightVw : COOP_HEIGHT_VW;
+    const wPx = _vwToPx(hVw * COOP_ASPECT);
+    const el = document.createElement('div');
+    el.className = 'coop-object field-object';
+    el.dataset.kind = 'coop';
+    el.dataset.id = coop.id;
+    el.dataset.sizeVw = String(hVw);
+    el.style.left = _pxToVw(_canXToPx(coop.leftVw, wPx)) + 'vw';
+    el.style.top = coop.topVh + 'vh';
+    el.style.height = hVw + 'vw';
+    el.style.width = (hVw * COOP_ASPECT) + 'vw';
+    el.innerHTML = _coopSvg();
     containerEl.appendChild(el);
   });
   (state.flowers || []).forEach(function (fl) {
@@ -1344,6 +1725,16 @@ function _troughCenterPx(tr) {
   return {
     x: _canXToPx(tr.leftVw, wPx) + wPx / 2,
     y: _vhToPx(tr.topVh) + hPx / 2
+  };
+}
+
+function _coopCenterPx(coop) {
+  const h = coop.heightVw || COOP_HEIGHT_VW;
+  const wPx = _vwToPx(h * COOP_ASPECT);
+  const hPx = _vwToPx(h);
+  return {
+    x: _canXToPx(coop.leftVw, wPx) + wPx / 2,
+    y: _vhToPx(coop.topVh) + hPx / 2
   };
 }
 
@@ -1444,6 +1835,28 @@ function computeTroughBoost(containerEl, pens, troughs) {
   return 1 + added;
 }
 
+function computeCoopHourlyValue(containerEl, coop, pens, troughs) {
+  pens = pens || [];
+  troughs = troughs || [];
+  if (!containerEl || !coop || !pens.length) return 0;
+  const center = _coopCenterPx(coop);
+  const pen = pens.find(function (p) { return pointInPenPx(center.x, center.y, p); });
+  if (!pen) return 0;
+  const animals = _animalsInPen(containerEl, pen);
+  let chickens = 0;
+  let ducks = 0;
+  animals.forEach(function (el) {
+    if (el.dataset.species === 'chickens') chickens += 1;
+    if (el.dataset.species === 'ducks') ducks += 1;
+  });
+  if (!chickens && !ducks) return 0;
+  const penMultiplier = 1 + penAddedProductivity(containerEl, pen, troughs);
+  if (window.StudyEconomy && window.StudyEconomy.coopHourlyValue) {
+    return window.StudyEconomy.coopHourlyValue(chickens, ducks, penMultiplier);
+  }
+  return Math.round(((chickens * 0.45 + ducks * 3.5) * penMultiplier) * 100) / 100;
+}
+
 function removePen(containerEl, penId) {
   const state = _penTroughLookup() || {};
   const pens = (state.pens || []).filter(function (p) { return p.id !== penId; });
@@ -1455,6 +1868,13 @@ function removeTrough(containerEl, troughId) {
   const state = _penTroughLookup() || {};
   const troughs = (state.troughs || []).filter(function (tr) { return tr.id !== troughId; });
   if (_onTroughsChange) _onTroughsChange(troughs);
+  renderPensAndTroughs(containerEl);
+}
+
+function removeCoop(containerEl, coopId) {
+  const state = _penTroughLookup() || {};
+  const coops = (state.coops || []).filter(function (coop) { return coop.id !== coopId; });
+  if (_onCoopsChange) _onCoopsChange(coops);
   renderPensAndTroughs(containerEl);
 }
 
@@ -1496,7 +1916,7 @@ function addFlowerAtDefault(containerEl, flower) {
 }
 
 function _clampPenRectPx(x, y, w, h, lockSide) {
-  const vh = window.innerHeight || 1;
+  const vh = _layoutViewportHeight();
   const nav = _navHeightPx() + 8;
   const cx = x + w / 2;
   const side = lockSide || _sideForX(cx);
@@ -1565,7 +1985,7 @@ function startPenPlacement(opts) {
       heightVh: _pxToVh(rect.h)
     };
     preview.innerHTML = '';
-    _applyPenRect(preview, fake);
+    _applyPenRect(preview, fake, { updateChips: false });
     Array.prototype.forEach.call(preview.querySelectorAll('.pen-fence'), function (el) {
       el.style.position = 'absolute';
     });

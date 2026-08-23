@@ -19,9 +19,11 @@
   ];
   const PRICE_GROWTH = window.StudyEconomy && window.StudyEconomy.priceGrowth ? window.StudyEconomy.priceGrowth : 1.22;
   const ENCOURAGEMENT_INTERVAL = 10;
+  const PET_HAPPINESS_GAIN = 12;
+  const COOP_PASSIVE_CAP_HOURS = 8;
 
   let currentUsername = null;
-  let economy = { bucks: 0, animals: { chickens: 0, sheep: 0, ducks: 0, retrievers: 0, pigs: 0, fish: 0, bison: 0, horse: 0, squid: 0, giraffe: 0, cat: 0, lizard: 0 }, unlockedAnimals: [], unlockedBackgrounds: [], animalPlacements: {}, animalNames: {}, pens: [], troughs: [], flowers: [], passiveIncome: { version: 1, lastAccruedAt: 0, carry: 0, totalEarned: 0, lastClaimedAt: 0, lastClaimedAmount: 0 } };
+  let economy = { bucks: 0, animals: { chickens: 0, sheep: 0, ducks: 0, retrievers: 0, pigs: 0, fish: 0, bison: 0, horse: 0, squid: 0, giraffe: 0, cat: 0, lizard: 0 }, unlockedAnimals: [], unlockedBackgrounds: [], animalPlacements: {}, animalNames: {}, animalHappiness: {}, rewardLedger: { paid: {} }, pens: [], troughs: [], coops: [], flowers: [], passiveIncome: { version: 1, lastAccruedAt: 0, carry: 0, totalEarned: 0, lastClaimedAt: 0, lastClaimedAmount: 0 } };
   let addFormTags = [];
   let occlusionFormTags = [];
   let knownTags = [];
@@ -29,6 +31,11 @@
   let passiveIncomeBusy = false;
   let passiveIncomeWasVisible = !document.hidden;
   let passiveIncomeLastPersistAt = 0;
+  let coopEggLastPersistAt = 0;
+  let ratingBusy = false;
+  let deferredFlushTimer = null;
+  let layoutViewportKey = '';
+  let layoutSyncTimer = null;
 
   // Guards the cloud sign-in entry path. A single authenticated user can be
   // reported from three overlapping sources (the signInWithGoogle() return
@@ -117,7 +124,7 @@
     try {
       await waitForCloudAuth();
 
-      if (window.CloudAuth && window.CloudAuth.isConfigured) {
+      if (isCloudAuthConfigured()) {
         await setupCloudAuthScreen();
       } else {
         // Cloud auth not configured (js/firebase-config.js is still the
@@ -126,18 +133,16 @@
         if (currentUsername) {
           await enterApp();
         } else {
-          if (els.authCloudForm) els.authCloudForm.hidden = true;
-          if (els.authLocalForm) els.authLocalForm.hidden = false;
+          syncAuthFormsForCloudState(false);
           if (els.authScreen) els.authScreen.hidden = false;
         }
       }
     } catch (err) {
       console.error('init failed; showing an auth screen as a fallback.', err);
-      const configured = window.CloudAuth && window.CloudAuth.isConfigured;
-      if (els.authLocalForm) els.authLocalForm.hidden = configured;
-      if (els.authCloudForm) els.authCloudForm.hidden = !configured;
+      syncAuthFormsForCloudState(isCloudAuthConfigured());
       if (els.authScreen) els.authScreen.hidden = false;
     } finally {
+      if (els.authScreen && !els.authScreen.hidden) syncAuthFormsForCloudState(isCloudAuthConfigured());
       hideLoading();
     }
   }
@@ -157,6 +162,16 @@
       window.addEventListener('cloudauth-ready', done, { once: true });
       setTimeout(done, 2000);
     });
+  }
+
+  function isCloudAuthConfigured() {
+    return !!(window.CloudAuth && window.CloudAuth.isConfigured && typeof window.CloudAuth.getInitialUser === 'function');
+  }
+
+  function syncAuthFormsForCloudState(configured) {
+    configured = !!configured;
+    if (els.authLocalForm) els.authLocalForm.hidden = configured;
+    if (els.authCloudForm) els.authCloudForm.hidden = !configured;
   }
 
   function cacheEls() {
@@ -219,6 +234,7 @@
     els.spriteLabResetBtn = document.getElementById('sprite-lab-reset-btn');
     els.spriteLabCloseBtn = document.getElementById('sprite-lab-close-btn');
     els.settingsThemeRow = document.getElementById('settings-theme-row');
+    els.settingsGrassRow = document.getElementById('settings-grass-row');
     els.settingsVocabToggle = document.getElementById('settings-vocab-toggle');
     els.settingsFocusModeRow = document.getElementById('settings-focus-mode-row');
     els.settingsEncouragementToggle = document.getElementById('settings-encouragement-toggle');
@@ -442,6 +458,14 @@
     }
   }
 
+  function scheduleStorageFlush(reason, delay) {
+    if (deferredFlushTimer) clearTimeout(deferredFlushTimer);
+    deferredFlushTimer = setTimeout(function () {
+      deferredFlushTimer = null;
+      flushStorageNow(reason || 'deferred save');
+    }, delay == null ? 1400 : delay);
+  }
+
   async function saveSettingsAndFlush(settings) {
     await saveSettings(settings);
     await flushStorageNow('settings change');
@@ -497,6 +521,10 @@
   let _initialAuthSettled = false;
 
   async function setupCloudAuthScreen() {
+    if (!isCloudAuthConfigured()) {
+      showAuthScreen();
+      return;
+    }
     els.googleSigninBtn.addEventListener('click', async function () {
       els.googleSigninBtn.disabled = true;
       clearAuthError();
@@ -534,8 +562,7 @@
       await enterAppForUser(initialUser);
     } else {
       // Genuinely signed out — NOW reveal the Google form (never before).
-      els.authLocalForm.hidden = true;
-      els.authCloudForm.hidden = false;
+      syncAuthFormsForCloudState(isCloudAuthConfigured());
       els.authScreen.hidden = false;
       const redirectErr = window.CloudAuth.getRedirectError && window.CloudAuth.getRedirectError();
       if (redirectErr) showAuthError(describeAuthError(redirectErr));
@@ -566,9 +593,7 @@
 
   function showAuthScreen() {
     if (els.app) els.app.hidden = true;
-    const configured = window.CloudAuth && window.CloudAuth.isConfigured;
-    if (els.authLocalForm) els.authLocalForm.hidden = configured;
-    if (els.authCloudForm) els.authCloudForm.hidden = !configured;
+    syncAuthFormsForCloudState(isCloudAuthConfigured());
     if (els.authScreen) els.authScreen.hidden = false;
   }
 
@@ -611,10 +636,11 @@
       }
     );
     setPenTroughHooks(
-      function () { return { pens: economy.pens || [], troughs: economy.troughs || [], flowers: economy.flowers || [] }; },
+      function () { return { pens: economy.pens || [], troughs: economy.troughs || [], coops: economy.coops || [], flowers: economy.flowers || [] }; },
       function (pens) { economy.pens = pens; persistEconomy(); },
       function (troughs) { economy.troughs = troughs; persistEconomy(); },
-      function (flowers) { economy.flowers = flowers; persistEconomy(); }
+      function (flowers) { economy.flowers = flowers; persistEconomy(); },
+      function (coops) { economy.coops = coops; persistEconomy(); }
     );
     bindAnimalFieldDrag();
 
@@ -622,7 +648,9 @@
       await refreshKnownTags();
       await initScatteredAnimals(els.pigField, economy.animals);
       syncAnimalNameAttributes();
+      if (typeof renderPensAndTroughs === 'function') renderPensAndTroughs(els.pigField);
       await accruePassiveIncome({ reason: 'enter', renderStore: false });
+      await accrueCoopEggs({ reason: 'enter', renderStore: false });
       if (typeof syncFarmGap === 'function') syncFarmGap();
       await renderNaistsBrowser();
     });
@@ -710,7 +738,7 @@
 
   function bucksPerRating(animals) {
     return window.StudyEconomy && window.StudyEconomy.cardReward
-      ? window.StudyEconomy.cardReward(animals, farmBoostMultiplier())
+      ? window.StudyEconomy.cardReward(animals, farmBoostMultiplier(), economy.animalHappiness)
       : Math.round(Math.max(1, 1) * farmBoostMultiplier() * 100) / 100;
   }
 
@@ -734,7 +762,7 @@
 
   function passiveBucksPerHour() {
     if (window.StudyEconomy && window.StudyEconomy.passiveHourly) {
-      return window.StudyEconomy.passiveHourly(economy.animals, farmBoostMultiplier());
+      return window.StudyEconomy.passiveHourly(economy.animals, farmBoostMultiplier(), economy.animalHappiness);
     }
     const farm = farmBoostMultiplier();
     return Math.round(Math.max(0, bucksPerRating(economy.animals) - farm) * 4 * 100) / 100;
@@ -743,7 +771,7 @@
   function passiveAccrualForElapsed(elapsedMs, active) {
     const state = passiveIncomeState();
     if (window.StudyEconomy && window.StudyEconomy.passiveAccrual) {
-      return window.StudyEconomy.passiveAccrual(economy.animals, farmBoostMultiplier(), elapsedMs, state.carry, active);
+      return window.StudyEconomy.passiveAccrual(economy.animals, farmBoostMultiplier(), elapsedMs, state.carry, active, economy.animalHappiness);
     }
     const hourly = passiveBucksPerHour();
     const elapsedHours = Math.max(0, (Number(elapsedMs) || 0) / 3600000);
@@ -793,7 +821,7 @@
       const shouldPersist = opts.forcePersist || opts.reason !== 'timer' || now - passiveIncomeLastPersistAt >= 15000;
       if (shouldPersist) await persistEconomy({ flush: opts.flush !== false });
       else updateBucksDisplay();
-      if (opts.renderStore && activeTabName() === 'store') await renderStore();
+      if (opts.renderStore && activeTabName() === 'store') refreshStoreAffordances();
       return accrual;
     } finally {
       passiveIncomeBusy = false;
@@ -807,6 +835,7 @@
     passiveIncomeTimer = window.setInterval(function () {
       if (!els.app || els.app.hidden || document.hidden) return;
       accruePassiveIncome({ reason: 'timer', active: true, renderStore: true, flush: false });
+      accrueCoopEggs({ reason: 'timer', renderStore: true, flush: false });
     }, 1000);
     document.addEventListener('visibilitychange', function () {
       if (!els.app || els.app.hidden) return;
@@ -818,14 +847,17 @@
         renderStore: !document.hidden,
         forcePersist: true
       });
+      accrueCoopEggs({ reason: document.hidden ? 'hidden' : 'visible', renderStore: false, forcePersist: true });
     });
     window.addEventListener('pagehide', function () {
       if (!els.app || els.app.hidden) return;
       accruePassiveIncome({ reason: 'pagehide', active: passiveIncomeWasVisible, renderStore: false, forcePersist: true });
+      accrueCoopEggs({ reason: 'pagehide', renderStore: false, forcePersist: true });
     });
     window.addEventListener('beforeunload', function () {
       if (!els.app || els.app.hidden) return;
       accruePassiveIncome({ reason: 'beforeunload', active: passiveIncomeWasVisible, renderStore: false, forcePersist: true });
+      accrueCoopEggs({ reason: 'beforeunload', renderStore: false, forcePersist: true });
       if (passiveIncomeTimer) window.clearInterval(passiveIncomeTimer);
       passiveIncomeTimer = null;
     });
@@ -850,8 +882,116 @@
     return Math.round(bucksPerRating(economy.animals) * 5 * 100) / 100;
   }
 
+  function coopBuyPrice() {
+    return Math.round(Math.max(25, bucksPerRating(economy.animals) * 12) * 100) / 100;
+  }
+
+  function coopHourlyValue(coop) {
+    if (typeof computeCoopHourlyValue === 'function') {
+      return computeCoopHourlyValue(els.pigField, coop, economy.pens, economy.troughs);
+    }
+    return 0;
+  }
+
+  function coopEggValue() {
+    return (economy.coops || []).reduce(function (total, coop) {
+      return total + (Number(coop.eggValue) || 0);
+    }, 0);
+  }
+
+  function coopHourlyTotal() {
+    return (economy.coops || []).reduce(function (total, coop) {
+      return total + coopHourlyValue(coop);
+    }, 0);
+  }
+
+  async function accrueCoopEggs(opts) {
+    opts = opts || {};
+    if (!economy || !Array.isArray(economy.coops) || !economy.coops.length) return { amount: 0 };
+    const now = Date.now();
+    let amount = 0;
+    let changed = false;
+    economy.coops = economy.coops.map(function (coop) {
+      const next = Object.assign({}, coop);
+      const last = Number(next.lastEggAt) || 0;
+      if (!last || last > now + 60000) {
+        next.lastEggAt = now;
+        changed = true;
+        return next;
+      }
+      const elapsedMs = Math.max(0, now - last);
+      if (elapsedMs < 1000) return next;
+      const hours = Math.min(elapsedMs / 3600000, COOP_PASSIVE_CAP_HOURS);
+      const raw = coopHourlyValue(next) * hours + Math.max(0, Number(next.eggCarry) || 0);
+      const earned = Math.floor((raw + 1e-9) * 100) / 100;
+      next.eggCarry = Math.max(0, raw - earned);
+      next.lastEggAt = now;
+      if (earned > 0) {
+        next.eggValue = Math.round(((next.eggValue || 0) + earned) * 100) / 100;
+        next.totalEggValue = Math.round(((next.totalEggValue || 0) + earned) * 100) / 100;
+        amount += earned;
+      }
+      changed = true;
+      return next;
+    });
+    if (!changed) return { amount: 0 };
+    const shouldPersist = opts.forcePersist || opts.reason === 'enter' || opts.reason === 'before mutation' || now - coopEggLastPersistAt >= 15000;
+    if (shouldPersist) {
+      coopEggLastPersistAt = now;
+      await persistEconomy({ flush: opts.forcePersist && opts.flush !== false });
+    }
+    if (opts.renderStore && activeTabName() === 'store') refreshStoreAffordances();
+    return { amount: Math.round(amount * 100) / 100 };
+  }
+
   function updateBucksDisplay() {
     if (els.bucksValue) els.bucksValue.textContent = formatCurrency(economy.bucks);
+  }
+
+  function rewardLedger() {
+    if (!economy.rewardLedger || typeof economy.rewardLedger !== 'object' || Array.isArray(economy.rewardLedger)) {
+      economy.rewardLedger = { paid: {} };
+    }
+    if (!economy.rewardLedger.paid || typeof economy.rewardLedger.paid !== 'object' || Array.isArray(economy.rewardLedger.paid)) {
+      economy.rewardLedger.paid = {};
+    }
+    return economy.rewardLedger;
+  }
+
+  function rewardKeyForCard(card) {
+    if (!card || !card.id) return '';
+    return [
+      'card',
+      card.id,
+      Number(card.dueDate) || 0,
+      Number(card.lastReviewed) || 0,
+      Number(card.repetition) || 0
+    ].join(':');
+  }
+
+  async function grantRatingReward(card, rating, logEntry) {
+    if (!card || rating === 'again') return { amount: 0, paid: false, key: '' };
+    const key = rewardKeyForCard(card);
+    if (!key) return { amount: 0, paid: false, key: '' };
+    const ledger = rewardLedger();
+    if (ledger.paid[key]) {
+      if (logEntry) {
+        logEntry.rewardKey = key;
+        logEntry.rewardAmount = 0;
+      }
+      return { amount: 0, paid: false, key: key };
+    }
+    await accruePassiveIncome({ reason: 'before rating reward', renderStore: false, flush: false });
+    await accrueCoopEggs({ reason: 'before mutation', renderStore: false, flush: false });
+    const earned = bucksPerRating(economy.animals);
+    economy.bucks = Math.round((economy.bucks + earned) * 100) / 100;
+    ledger.paid[key] = true;
+    if (logEntry) {
+      logEntry.rewardKey = key;
+      logEntry.rewardAmount = earned;
+    }
+    await persistEconomy({ flush: false });
+    return { amount: earned, paid: true, key: key };
   }
 
   function normalizeFocusMode(value) {
@@ -908,7 +1048,7 @@
     if (document.body) document.body.classList.remove('focus-mode-sleep');
     if (!els.pigField) return;
     els.pigField.classList.remove('focus-mode-sleep');
-    Array.prototype.forEach.call(els.pigField.querySelectorAll('.animal-scatter, .pen-fence, .trough-object, .flower-object'), function (el) {
+    Array.prototype.forEach.call(els.pigField.querySelectorAll('.animal-scatter, .pen-fence, .trough-object, .coop-object, .flower-object'), function (el) {
       el.style.removeProperty('filter');
       el.style.removeProperty('opacity');
       el.style.removeProperty('mix-blend-mode');
@@ -973,10 +1113,25 @@
   }
 
   function sellModeForTab(tab) {
-    return tab === 'store' && !isSleepFocusActive();
+    return tab === 'store' && !isCompactLayout() && !isSleepFocusActive();
   }
 
-  function syncLayoutMode() {
+  function currentLayoutViewportKey() {
+    const root = document.documentElement;
+    const w = root.clientWidth || window.innerWidth || 1;
+    const h = root.clientHeight || window.innerHeight || 1;
+    return w + 'x' + h;
+  }
+
+  function isPinchZoomed() {
+    return !!(window.visualViewport && Math.abs((window.visualViewport.scale || 1) - 1) > 0.02);
+  }
+
+  function syncLayoutMode(opts) {
+    opts = opts || {};
+    const key = currentLayoutViewportKey();
+    if (!opts.force && key === layoutViewportKey) return;
+    layoutViewportKey = key;
     const compact = isCompactLayout();
     document.documentElement.classList.toggle('compact-layout', compact);
     const active = els.tabBtns && els.tabBtns.find(function (b) { return b.classList.contains('active'); });
@@ -993,13 +1148,21 @@
   function bindLayoutMode() {
     if (document.documentElement.dataset.layoutModeBound) return;
     document.documentElement.dataset.layoutModeBound = '1';
-    syncLayoutMode();
+    syncLayoutMode({ force: true });
     if (window.matchMedia) {
       const mq = window.matchMedia('(max-width: 720px)');
-      if (mq.addEventListener) mq.addEventListener('change', syncLayoutMode);
-      else if (mq.addListener) mq.addListener(syncLayoutMode);
+      const onMediaChange = function () { syncLayoutMode({ force: true }); };
+      if (mq.addEventListener) mq.addEventListener('change', onMediaChange);
+      else if (mq.addListener) mq.addListener(onMediaChange);
     }
-    window.addEventListener('resize', syncLayoutMode);
+    window.addEventListener('resize', function () {
+      if (isPinchZoomed()) return;
+      if (layoutSyncTimer) clearTimeout(layoutSyncTimer);
+      layoutSyncTimer = setTimeout(function () {
+        layoutSyncTimer = null;
+        syncLayoutMode();
+      }, 80);
+    });
   }
 
   async function persistEconomy(opts) {
@@ -1056,10 +1219,10 @@
     }
   }
 
-  // ---------------- appearance (foreground theme + fixed pixel grass field) ----------------
+  // ---------------- appearance (foreground theme + pixel grass field) ----------------
   // Light/dark/system still change foreground tokens. The page background is
-  // intentionally fixed to the pixel grass field so old saved custom images or
-  // cosmetic background ids cannot punch through the farm redesign.
+  // limited to authored pixel grass textures so old saved custom images or
+  // non-farm cosmetic ids cannot punch through the redesign.
 
   const ACCENT_PRESETS = [
     { id: 'raspberry', nameKey: 'accentBerry', swatch: '#d6337a' },
@@ -1068,6 +1231,7 @@
     { id: 'tangerine', nameKey: 'accentTang', swatch: '#e07d2a' },
     { id: 'grape', nameKey: 'accentGrape', swatch: '#8b46c8' }
   ];
+  const GRASS_PRESETS = ['grass', 'grass-meadow', 'grass-noise'];
 
   // Applies the chosen accent + light/dark appearance to <html>/<body>.
   function applyAppearance(settings) {
@@ -1080,8 +1244,9 @@
     }
 
     const accent = s.accentPreset || 'raspberry';
+    const grass = GRASS_PRESETS.indexOf(s.backgroundPreset) !== -1 ? s.backgroundPreset : 'grass';
     document.documentElement.dataset.accent = accent;
-    document.documentElement.dataset.bg = 'grass';
+    document.documentElement.dataset.bg = grass;
     document.body.style.backgroundImage = '';
     document.body.style.backgroundSize = '';
     document.body.style.backgroundPosition = '';
@@ -1324,6 +1489,21 @@
         await renderSettings();
       });
     }
+
+    if (els.settingsGrassRow) {
+      els.settingsGrassRow.addEventListener('click', async function (e) {
+        const btn = e.target.closest('[data-grass-choice]');
+        if (!btn) return;
+        const choice = btn.getAttribute('data-grass-choice');
+        if (GRASS_PRESETS.indexOf(choice) === -1) return;
+        const s = await getSettings();
+        s.backgroundPreset = choice;
+        s.backgroundImage = null;
+        await saveSettingsAndFlush(s);
+        applyAppearance(s);
+        await renderSettings();
+      });
+    }
   }
 
   async function openSettings() {
@@ -1351,6 +1531,15 @@
     if (els.settingsThemeRow) {
       Array.prototype.forEach.call(els.settingsThemeRow.querySelectorAll('[data-theme-choice]'), function (btn) {
         const on = btn.getAttribute('data-theme-choice') === theme;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
+
+    const grass = GRASS_PRESETS.indexOf(settings.backgroundPreset) !== -1 ? settings.backgroundPreset : 'grass';
+    if (els.settingsGrassRow) {
+      Array.prototype.forEach.call(els.settingsGrassRow.querySelectorAll('[data-grass-choice]'), function (btn) {
+        const on = btn.getAttribute('data-grass-choice') === grass;
         btn.classList.toggle('active', on);
         btn.setAttribute('aria-pressed', on ? 'true' : 'false');
       });
@@ -2763,60 +2952,73 @@
     });
   }
 
+  function setRatingBusy(on) {
+    ratingBusy = !!on;
+    if (!els.ratingButtons) return;
+    Array.prototype.forEach.call(els.ratingButtons.querySelectorAll('.rating-btn'), function (btn) {
+      btn.disabled = !!on;
+    });
+  }
+
   async function rateCard(rating) {
     const card = session.currentCard;
-    if (!card) return;
+    if (!card || ratingBusy) return;
+    setRatingBusy(true);
 
-    const reinsertAt = Math.min(session.queue.length, 3 + Math.floor(Math.random() * 4));
+    try {
+      const reinsertAt = Math.min(session.queue.length, 3 + Math.floor(Math.random() * 4));
 
-    if (session.cram) {
-      // Cram mode never touches scheduling data: no scheduleReview(), no
-      // updateCard(), no review-log entry. It only reorders this session's
-      // local queue so "Again" cards resurface, exactly like a real
-      // session, but nothing here can corrupt real SRS state.
-      session.lastAction = {
-        cram: true,
-        originalCard: card,
-        wasAgain: rating === 'again'
-      };
-      if (rating === 'again') session.queue.splice(reinsertAt, 0, card);
-    } else {
-      const updated = scheduleReview(card, rating, Date.now());
-      const logEntry = { id: generateId(), cardId: card.id, deckId: card.deckId, rating: rating, timestamp: Date.now() };
-      await updateCard(card.id, updated);
-      await logReview(logEntry);
+      if (session.cram) {
+        // Cram mode never touches scheduling data: no scheduleReview(), no
+        // updateCard(), no review-log entry. It only reorders this session's
+        // local queue so "Again" cards resurface, exactly like a real
+        // session, but nothing here can corrupt real SRS state.
+        session.lastAction = {
+          cram: true,
+          originalCard: card,
+          wasAgain: rating === 'again'
+        };
+        if (rating === 'again') session.queue.splice(reinsertAt, 0, card);
+      } else {
+        const updated = scheduleReview(card, rating, Date.now());
+        const logEntry = { id: generateId(), cardId: card.id, deckId: card.deckId, rating: rating, timestamp: Date.now() };
+        const reward = await grantRatingReward(card, rating, logEntry);
+        await updateCard(card.id, updated);
+        await logReview(logEntry);
 
-      session.lastAction = {
-        cram: false,
-        originalCard: card, // pre-rating snapshot, restored verbatim on undo
-        updatedCard: updated,
-        logEntryId: logEntry.id,
-        wasAgain: rating === 'again'
-      };
-      if (rating === 'again') session.queue.splice(reinsertAt, 0, updated);
+        session.lastAction = {
+          cram: false,
+          originalCard: card, // pre-rating snapshot, restored verbatim on undo
+          updatedCard: updated,
+          logEntryId: logEntry.id,
+          wasAgain: rating === 'again',
+          rewardKey: reward.key,
+          bucksGranted: reward.amount
+        };
+        if (rating === 'again') session.queue.splice(reinsertAt, 0, updated);
 
-      await accruePassiveIncome({ reason: 'before rating', renderStore: false });
-      const earned = bucksPerRating(economy.animals);
-      economy.bucks = Math.round((economy.bucks + earned) * 100) / 100;
-      session.lastAction.bucksGranted = earned;
-      await persistEconomy();
-    }
-
-    session.reviewedCount++;
-    els.undoRatingBtn.hidden = false;
-
-    const settings = await getSettings();
-    const sleepFocus = document.documentElement.dataset.focusMode === 'sleep';
-    if (settings.encouragement && !sleepFocus) {
-      session.cardsSinceLastPig = (session.cardsSinceLastPig || 0) + 1;
-      if (session.cardsSinceLastPig >= ENCOURAGEMENT_INTERVAL) {
-        session.cardsSinceLastPig = 0;
-        if (session.lastAction) session.lastAction.encouragementFired = true;
-        await showPigEncouragement();
-        return;
+        updateBucksDisplay();
+        scheduleStorageFlush('rating save');
       }
+
+      session.reviewedCount++;
+      els.undoRatingBtn.hidden = false;
+
+      const settings = await getSettings();
+      const sleepFocus = document.documentElement.dataset.focusMode === 'sleep';
+      if (settings.encouragement && !sleepFocus) {
+        session.cardsSinceLastPig = (session.cardsSinceLastPig || 0) + 1;
+        if (session.cardsSinceLastPig >= ENCOURAGEMENT_INTERVAL) {
+          session.cardsSinceLastPig = 0;
+          if (session.lastAction) session.lastAction.encouragementFired = true;
+          await showPigEncouragement();
+          return;
+        }
+      }
+      showNextCard();
+    } finally {
+      setRatingBusy(false);
     }
-    showNextCard();
   }
 
   async function undoLastRating() {
@@ -2840,10 +3042,6 @@
     if (!action.cram) {
       await updateCard(action.originalCard.id, action.originalCard);
       await deleteReviewLogEntry(action.logEntryId);
-      if (action.bucksGranted) {
-        economy.bucks = Math.max(0, Math.round((economy.bucks - action.bucksGranted) * 100) / 100);
-        await persistEconomy();
-      }
       await flushStorageNow('rating undo');
     }
 
@@ -3467,9 +3665,17 @@
   }
   function makeTagChip(name, removable, onRemove) {
     const chip = document.createElement('span');
+    const tagLength = String(name || '').length;
     chip.className = 'tag-chip';
     chip.dataset.tone = String(tagToneIndex(name));
-    chip.appendChild(document.createTextNode(name));
+    chip.dataset.tagLen = String(tagLength);
+    if (tagLength > 28) chip.style.setProperty('--tag-fit-size', '0.5rem');
+    else if (tagLength > 18) chip.style.setProperty('--tag-fit-size', '0.56rem');
+    else if (tagLength > 12) chip.style.setProperty('--tag-fit-size', '0.64rem');
+    const label = document.createElement('span');
+    label.className = 'tag-chip-text';
+    label.textContent = name;
+    chip.appendChild(label);
     if (removable) {
       const x = document.createElement('button');
       x.type = 'button';
@@ -3649,7 +3855,9 @@
     if (!root) return;
     Array.prototype.forEach.call(root.querySelectorAll('.animal-scatter'), function (node) {
       const name = animalNameForNode(node);
+      const id = animalInstanceIdForNode(node);
       node.dataset.animalName = name;
+      node.dataset.animalHappiness = String(animalHappinessValue(id));
       node.title = name;
       node.setAttribute('aria-label', name);
     });
@@ -3662,10 +3870,11 @@
   function animalNameInteractionBlocked(target) {
     if (!els.pigField || els.pigField.classList.contains('sell-mode')) return true;
     if (isSleepFocusActive()) return true;
+    if (activeTabName() === 'store') return true;
     if (els.app && els.app.hidden) return true;
     if (_storePlacingActive()) return true;
     if (!target || !target.closest) return false;
-    if (target.closest('#top-nav, #tab-row, #tab-nav, #auth-screen, .overlay-card, #shortcuts-overlay, #new-deck-overlay, #text-prompt-overlay, #pixel-modal-overlay, #settings-overlay, #loading-overlay, #pig-encouragement-overlay, button, a, input, textarea, select, label')) return true;
+    if (target.closest('#top-nav, #tab-row, #tab-nav, #auth-screen, .overlay-card, #shortcuts-overlay, #new-deck-overlay, #text-prompt-overlay, #pixel-modal-overlay, #animal-detail-overlay, #settings-overlay, #loading-overlay, #pig-encouragement-overlay, button, a, input, textarea, select, label')) return true;
     return !document.documentElement.classList.contains('farm-tab') && !!target.closest('#main-content');
   }
 
@@ -3720,23 +3929,152 @@
     return next;
   }
 
-  async function renameAnimalNode(node) {
+  function compactAnimalHappiness(happiness, species, removedIndex) {
+    const next = {};
+    Object.keys(happiness || {}).forEach(function (key) {
+      const parts = key.split('-');
+      const spec = parts[0];
+      const idx = Number(parts[1]);
+      if (spec !== species) {
+        next[key] = happiness[key];
+        return;
+      }
+      if (!Number.isInteger(idx) || idx === removedIndex) return;
+      next[spec + '-' + (idx > removedIndex ? idx - 1 : idx)] = happiness[key];
+    });
+    return next;
+  }
+
+  function animalHappinessValue(instanceId) {
+    const n = economy.animalHappiness && Number(economy.animalHappiness[instanceId]);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return Math.max(0, Math.min(100, n));
+  }
+
+  function animalProductivityPercent(instanceId) {
+    const multiplier = window.StudyEconomy && window.StudyEconomy.animalProductivityMultiplier
+      ? window.StudyEconomy.animalProductivityMultiplier(economy.animalHappiness, instanceId)
+      : 1 + animalHappinessValue(instanceId) * 0.0025;
+    return Math.round((multiplier - 1) * 100);
+  }
+
+  let _animalDetailOverlay = null;
+  let _animalDetailStop = null;
+
+  function closeAnimalDetail() {
+    if (_animalDetailStop) {
+      _animalDetailStop();
+      _animalDetailStop = null;
+    }
+    if (_animalDetailOverlay) _animalDetailOverlay.hidden = true;
+  }
+
+  function ensureAnimalDetailOverlay() {
+    if (_animalDetailOverlay) return _animalDetailOverlay;
+    const overlay = document.createElement('div');
+    overlay.id = 'animal-detail-overlay';
+    overlay.hidden = true;
+    overlay.innerHTML =
+      '<div class="overlay-card animal-detail-card" role="dialog" aria-modal="true">' +
+        '<h2 class="animal-detail-title"></h2>' +
+        '<div class="animal-detail-body">' +
+          '<div class="animal-detail-sprite" aria-hidden="true"></div>' +
+          '<label class="animal-detail-name-field"><span></span><input type="text" maxlength="36"></label>' +
+          '<div class="animal-detail-stats">' +
+            '<span data-stat="happiness"></span>' +
+            '<span data-stat="productivity"></span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="text-prompt-actions animal-detail-actions">' +
+          '<button type="button" class="secondary-btn" data-action="pet"></button>' +
+          '<button type="button" class="secondary-btn" data-action="close"></button>' +
+          '<button type="button" class="primary-btn" data-action="save"></button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('mousedown', function (e) {
+      if (e.target === overlay) closeAnimalDetail();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (!_animalDetailOverlay || _animalDetailOverlay.hidden) return;
+      if (e.key === 'Escape') closeAnimalDetail();
+    });
+    _animalDetailOverlay = overlay;
+    return overlay;
+  }
+
+  async function openAnimalDetail(node) {
     if (!node) return;
     const id = animalInstanceIdForNode(node);
     if (!id) return;
-    const next = await openTextPrompt({
-      title: t('renameAnimal'),
-      placeholder: t('animalNamePlaceholder'),
-      value: animalNameForNode(node),
-      confirmText: t('rename'),
-      requireNonEmpty: true
-    });
-    if (!next || !next.trim()) return;
-    economy.animalNames = Object.assign({}, economy.animalNames || {});
-    economy.animalNames[id] = next.trim();
-    await persistEconomy();
-    syncAnimalNameAttributes();
     hideAnimalNameTip();
+    const overlay = ensureAnimalDetailOverlay();
+    const card = overlay.querySelector('.animal-detail-card');
+    const title = overlay.querySelector('.animal-detail-title');
+    const spriteSlot = overlay.querySelector('.animal-detail-sprite');
+    const label = overlay.querySelector('.animal-detail-name-field span');
+    const input = overlay.querySelector('.animal-detail-name-field input');
+    const happinessStat = overlay.querySelector('[data-stat="happiness"]');
+    const productivityStat = overlay.querySelector('[data-stat="productivity"]');
+    const petBtn = overlay.querySelector('[data-action="pet"]');
+    const closeBtn = overlay.querySelector('[data-action="close"]');
+    const saveBtn = overlay.querySelector('[data-action="save"]');
+
+    function refreshStats() {
+      const happiness = animalHappinessValue(id);
+      happinessStat.textContent = t('animalHappiness', { pct: Math.round(happiness) });
+      productivityStat.textContent = t('animalProductivity', { pct: animalProductivityPercent(id) });
+      petBtn.disabled = happiness >= 100;
+    }
+
+    if (_animalDetailStop) {
+      _animalDetailStop();
+      _animalDetailStop = null;
+    }
+    title.textContent = animalNameForNode(node);
+    label.textContent = t('name');
+    input.placeholder = t('animalNamePlaceholder');
+    input.value = animalNameForNode(node);
+    petBtn.textContent = t('petAnimal');
+    closeBtn.textContent = t('close');
+    saveBtn.textContent = t('save');
+    spriteSlot.textContent = '';
+    if (window.PixelSprites && window.PixelSprites.renderAnimal) {
+      const states = ['stand', 'walk', 'sit', 'sleep'];
+      const state = states[Math.floor(Math.random() * states.length)];
+      const sprite = window.PixelSprites.renderAnimal(node.dataset.species || 'pigs', {
+        state: state,
+        variant: Number(node.dataset.variant || node.dataset.index || 0)
+      });
+      spriteSlot.appendChild(sprite);
+      _animalDetailStop = window.PixelSprites.animate ? window.PixelSprites.animate(sprite, state, state === 'walk' ? 5 : 2) : null;
+    }
+    refreshStats();
+
+    saveBtn.onclick = async function () {
+      const next = input.value.trim();
+      if (!next) return;
+      economy.animalNames = Object.assign({}, economy.animalNames || {});
+      economy.animalNames[id] = next;
+      title.textContent = next;
+      await persistEconomy();
+      syncAnimalNameAttributes();
+      refreshStoreAffordances();
+      closeAnimalDetail();
+    };
+    closeBtn.onclick = closeAnimalDetail;
+    petBtn.onclick = async function () {
+      economy.animalHappiness = Object.assign({}, economy.animalHappiness || {});
+      economy.animalHappiness[id] = Math.min(100, animalHappinessValue(id) + PET_HAPPINESS_GAIN);
+      await persistEconomy();
+      syncAnimalNameAttributes();
+      refreshStats();
+      refreshStoreAffordances();
+    };
+
+    if (card) card.setAttribute('aria-label', t('animalDetails'));
+    overlay.hidden = false;
+    setTimeout(function () { input.focus(); input.select(); }, 0);
   }
 
   function bindAnimalNames() {
@@ -3761,7 +4099,7 @@
       if (!node || window.StudyFieldGestureMoved) return;
       e.preventDefault();
       e.stopPropagation();
-      renameAnimalNode(node);
+      openAnimalDetail(node);
     }, true);
   }
 
@@ -3787,7 +4125,79 @@
     }
   }
 
+  function storeBatchPrice(unitPrice, quantity) {
+    return Math.round((unitPrice || 0) * Math.max(1, quantity || 1) * 100) / 100;
+  }
+
+  function storeOwnedBadge(count, label) {
+    const badge = document.createElement('span');
+    badge.className = 'store-owned-badge';
+    badge.textContent = label === '???'
+      ? '???'
+      : t('ownedBadge', {
+        n: count || 0,
+        label: label || t('owned')
+      });
+    return badge;
+  }
+
+  function appendStoreInfo(parent, nameText, ownedCount, ownedLabel, metaText) {
+    const titleLine = document.createElement('div');
+    titleLine.className = 'store-row-title-line';
+    const name = document.createElement('div');
+    name.className = 'store-row-name';
+    name.textContent = nameText;
+    titleLine.appendChild(name);
+    titleLine.appendChild(storeOwnedBadge(ownedCount, ownedLabel));
+    const meta = document.createElement('div');
+    meta.className = 'store-row-meta';
+    meta.textContent = metaText || '';
+    parent.appendChild(titleLine);
+    parent.appendChild(meta);
+  }
+
+  function storeBuyButton(text, price, disabled, title, onClick, requiredBucks) {
+    const buy = document.createElement('button');
+    buy.type = 'button';
+    buy.className = 'secondary-btn store-buy-btn';
+    buy.textContent = t(text, { price: formatCurrency(price) });
+    buy.dataset.storePrice = String(Number(price) || 0);
+    buy.dataset.storeRequires = String(requiredBucks == null ? (Number(price) || 0) : (Number(requiredBucks) || 0));
+    buy.disabled = !!disabled;
+    buy.title = title || (disabled ? t('notEnoughBucks') : '');
+    buy.addEventListener('click', onClick);
+    return buy;
+  }
+
+  function refreshStoreAffordances() {
+    updateBucksDisplay();
+    updateStoreSectionLabels();
+    if (!els.views || !els.views.store || !els.views.store.classList.contains('active')) return;
+    Array.prototype.forEach.call(els.views.store.querySelectorAll('.store-buy-btn[data-store-requires]'), function (btn) {
+      const required = Number(btn.dataset.storeRequires) || 0;
+      const disabled = economy.bucks < required;
+      btn.disabled = disabled;
+      btn.title = disabled ? t('notEnoughBucks') : '';
+    });
+    Array.prototype.forEach.call(els.views.store.querySelectorAll('[data-coop-eggs-action]'), function (btn) {
+      const eggs = Math.round(coopEggValue() * 100) / 100;
+      btn.textContent = t('sellEggsPrice', { price: formatCurrency(eggs) });
+      btn.disabled = eggs <= 0;
+      btn.title = eggs <= 0 ? t('coopIdle') : '';
+    });
+  }
+
+  function normalizePlacementBatch(payload, quantity) {
+    const needed = Math.max(1, quantity || 1);
+    if (Array.isArray(payload)) return payload.slice(0, needed);
+    const single = payload || {};
+    const out = [];
+    for (let i = 0; i < needed; i++) out.push(Object.assign({}, single));
+    return out;
+  }
+
   async function renderStore() {
+    await accrueCoopEggs({ reason: 'store render', renderStore: false, flush: false });
     updateBucksDisplay();
     const active = (els.tabBtns || []).find(function (b) { return b.classList.contains('active'); });
     applySellMode(!isSleepFocusActive() && sellModeForTab(active ? active.dataset.tab : 'store'));
@@ -3813,32 +4223,35 @@
       }
       const info = document.createElement('div');
       info.className = 'store-row-info';
-      const name = document.createElement('div');
-      name.className = 'store-row-name';
-      name.textContent = visibility.tier === 'visible' ? speciesLabel(spec.id) : '???';
-      const meta = document.createElement('div');
-      meta.className = 'store-row-meta';
+      let ownedLabel = t('owned');
+      let metaText = '';
       if (visibility.tier === 'hidden') {
-        meta.textContent = '???';
+        ownedLabel = '???';
+        metaText = '???';
       } else if (visibility.tier === 'silhouette') {
-        meta.textContent = '??? · ' + formatCurrency(price);
+        ownedLabel = '???';
+        metaText = t('animalLockedHint');
       } else {
-        meta.textContent = owned + ' ' + t('owned') + ' · ' + formatCurrency(price);
+        metaText = '';
       }
-      info.appendChild(name);
-      info.appendChild(meta);
+      appendStoreInfo(info, visibility.tier === 'visible' ? speciesLabel(spec.id) : '???', owned, ownedLabel, metaText);
       const actions = document.createElement('div');
       actions.className = 'store-row-actions';
-      const buy = document.createElement('button');
-      buy.type = 'button';
-      buy.className = 'secondary-btn';
-      buy.textContent = visibility.tier === 'visible' ? t('buy') : t('locked');
-      buy.disabled = visibility.tier !== 'visible' || economy.bucks < price;
-      buy.title = visibility.tier !== 'visible'
-        ? t('animalLockedHint')
-        : (economy.bucks < price ? t('notEnoughBucks') : '');
-      buy.addEventListener('click', function (e) { buyAnimal(spec.id, e); });
-      actions.appendChild(buy);
+      if (visibility.tier === 'visible') {
+        const priceTen = storeBatchPrice(price, 10);
+        actions.appendChild(storeBuyButton('buyOnePrice', price, economy.bucks < price, '', function (e) { buyAnimal(spec.id, e, 1); }));
+        actions.appendChild(storeBuyButton('buyTenPrice', priceTen, economy.bucks < priceTen, '', function (e) { buyAnimal(spec.id, e, 10); }));
+      } else {
+        const locked = document.createElement('button');
+        locked.type = 'button';
+        locked.className = 'secondary-btn store-buy-btn';
+        locked.textContent = visibility.tier === 'hidden'
+          ? t('buyOneUnknownPrice')
+          : t('buyOnePrice', { price: formatCurrency(price) });
+        locked.disabled = true;
+        locked.title = t('animalLockedHint');
+        actions.appendChild(locked);
+      }
       row.appendChild(thumb);
       row.appendChild(info);
       row.appendChild(actions);
@@ -3849,10 +4262,14 @@
       els.storeFarmList.innerHTML = '';
       const penCount = (economy.pens || []).length;
       const troughCount = (economy.troughs || []).length;
+      const coopCount = (economy.coops || []).length;
       const samplePen = penPriceForSize(8, 14);
       const troughPrice = troughBuyPrice();
+      const coopPrice = coopBuyPrice();
+      const eggs = Math.round(coopEggValue() * 100) / 100;
+      const eggHourly = Math.round(coopHourlyTotal() * 100) / 100;
 
-      function farmRow(name, meta, icon, onBuy, disabled, opts) {
+      function farmRow(name, meta, icon, actionsBuilder, opts) {
         opts = opts || {};
         const row = document.createElement('div');
         row.className = 'store-row';
@@ -3862,24 +4279,10 @@
         else fillPixelThumb(thumb, 'icon', icon);
         const info = document.createElement('div');
         info.className = 'store-row-info';
-        const title = document.createElement('div');
-        title.className = 'store-row-name';
-        title.textContent = name;
-        const m = document.createElement('div');
-        m.className = 'store-row-meta';
-        m.textContent = meta;
-        info.appendChild(title);
-        info.appendChild(m);
+        appendStoreInfo(info, name, opts.owned || 0, opts.ownedLabel || t('owned'), meta);
         const actions = document.createElement('div');
         actions.className = 'store-row-actions';
-        const buy = document.createElement('button');
-        buy.type = 'button';
-        buy.className = 'secondary-btn';
-        buy.textContent = t('buy');
-        buy.disabled = !!disabled;
-        buy.title = disabled ? t('notEnoughBucks') : '';
-        buy.addEventListener('click', function (e) { onBuy(e); });
-        actions.appendChild(buy);
+        if (actionsBuilder) actionsBuilder(actions);
         row.appendChild(thumb);
         row.appendChild(info);
         row.appendChild(actions);
@@ -3887,17 +4290,39 @@
       }
       farmRow(
         t('pen'),
-        t('penMeta', { n: penCount, price: formatCurrency(samplePen) }),
+        '',
         'fence',
-        function (e) { buyPen(e); },
-        economy.bucks < samplePen * 0.25
+        function (actions) {
+          actions.appendChild(storeBuyButton('buyFromPrice', samplePen, economy.bucks < samplePen * 0.25, '', function (e) { buyPen(e); }, samplePen * 0.25));
+        },
+        { owned: penCount }
       );
       farmRow(
         t('trough'),
-        t('troughMeta', { n: troughCount, price: formatCurrency(troughPrice) }),
+        '',
         'trough',
-        function (e) { buyTrough(e); },
-        economy.bucks < troughPrice
+        function (actions) {
+          actions.appendChild(storeBuyButton('buyPrice', troughPrice, economy.bucks < troughPrice, '', function (e) { buyTrough(e); }));
+        },
+        { owned: troughCount }
+      );
+      farmRow(
+        t('coop'),
+        t('coopMeta', { eggs: formatCurrency(eggs), rate: formatCurrency(eggHourly) }),
+        'coop',
+        function (actions) {
+          const sellEggs = document.createElement('button');
+          sellEggs.type = 'button';
+          sellEggs.className = 'secondary-btn store-sell-eggs-btn';
+          sellEggs.dataset.coopEggsAction = '1';
+          sellEggs.textContent = t('sellEggsPrice', { price: formatCurrency(eggs) });
+          sellEggs.disabled = eggs <= 0;
+          sellEggs.title = eggs <= 0 ? t('coopIdle') : '';
+          sellEggs.addEventListener('click', function () { sellCoopEggs(); });
+          actions.appendChild(storeBuyButton('buyPrice', coopPrice, economy.bucks < coopPrice, '', function (e) { buyCoop(e); }));
+          actions.appendChild(sellEggs);
+        },
+        { owned: coopCount }
       );
 
       const flowers = flowerShop();
@@ -3909,13 +4334,16 @@
         flowers.forEach(function (spec) {
           const owned = flowerOwnedCount(spec.id);
           const price = flowerPrice(spec.id, owned);
+          const priceTen = storeBatchPrice(price, 10);
           farmRow(
             t(spec.nameKey),
-            t('flowerMeta', { n: owned, bonus: formatBonus(spec.bonus), price: formatCurrency(price) }),
+            t('flowerMeta', { bonus: formatBonus(spec.bonus) }),
             '',
-            function (e) { buyFlower(spec.id, e); },
-            economy.bucks < price,
-            { flowerType: spec.id }
+            function (actions) {
+              actions.appendChild(storeBuyButton('buyOnePrice', price, economy.bucks < price, '', function (e) { buyFlower(spec.id, e, 1); }));
+              actions.appendChild(storeBuyButton('buyTenPrice', priceTen, economy.bucks < priceTen, '', function (e) { buyFlower(spec.id, e, 10); }));
+            },
+            { flowerType: spec.id, owned: owned, ownedLabel: t('planted') }
           );
         });
       }
@@ -3923,31 +4351,46 @@
 
   }
 
-  async function buyAnimal(speciesId, event) {
+  async function buyAnimal(speciesId, event, quantity) {
     if (isSleepFocusActive()) return;
     await accruePassiveIncome({ reason: 'before buy animal', renderStore: false });
+    await accrueCoopEggs({ reason: 'before mutation', renderStore: false, flush: false });
+    quantity = Math.max(1, quantity || 1);
     const owned = economy.animals[speciesId] || 0;
-    const price = buyPrice(speciesId, owned);
+    const unitPrice = buyPrice(speciesId, owned);
+    const price = storeBatchPrice(unitPrice, quantity);
     if (animalStoreVisibility(speciesId).tier !== 'visible') return;
     if (economy.bucks < price) return;
     const nextIndex = owned + 1;
     const name = speciesLabel(speciesId);
     if (isCompactLayout()) switchTab('farm');
     const started = typeof startAnimalPlacement === 'function' && startAnimalPlacement(els.pigField, speciesId, nextIndex, {
+      quantity: quantity,
       clientX: event && event.clientX,
       clientY: event && event.clientY,
-      banner: t('placeStoreItem', { name: name }),
+      banner: t('placeStoreItem', { name: quantity > 1 ? t('storeItemQuantity', { n: quantity, name: name }) : name }),
       priceText: formatCurrency(price),
-      onConfirm: async function (placement) {
+      onConfirm: async function (placementPayload) {
         await accruePassiveIncome({ reason: 'place animal', renderStore: false });
+        await accrueCoopEggs({ reason: 'before mutation', renderStore: false, flush: false });
         if (economy.bucks < price) return;
+        const placements = normalizePlacementBatch(placementPayload, quantity);
         economy.bucks = Math.round((economy.bucks - price) * 100) / 100;
-        economy.animals[speciesId] = nextIndex;
+        economy.animals[speciesId] = owned + quantity;
         rememberUnlockedAnimal(speciesId);
         economy.animalPlacements = Object.assign({}, economy.animalPlacements || {});
-        economy.animalPlacements[speciesId + '-' + nextIndex] = placement;
+        for (let i = 0; i < quantity; i++) {
+          const index = owned + 1 + i;
+          const placement = placements[i] || placements[placements.length - 1] || {};
+          economy.animalPlacements[speciesId + '-' + index] = placement;
+        }
         await persistEconomy();
-        if (typeof addScatterAnimalAt === 'function') await addScatterAnimalAt(els.pigField, speciesId, nextIndex, placement);
+        if (typeof addScatterAnimalAt === 'function') {
+          for (let i = 0; i < quantity; i++) {
+            const index = owned + 1 + i;
+            await addScatterAnimalAt(els.pigField, speciesId, index, placements[i] || placements[placements.length - 1]);
+          }
+        }
         syncAnimalNameAttributes();
         await renderStore();
       }
@@ -3958,6 +4401,7 @@
   async function buyPen() {
     if (isSleepFocusActive()) return;
     await accruePassiveIncome({ reason: 'before buy pen', renderStore: false });
+    await accrueCoopEggs({ reason: 'before mutation', renderStore: false, flush: false });
     if (isCompactLayout()) switchTab('farm');
     startPenPlacement({
       banner: (isCompactLayout() || document.documentElement.classList.contains('farm-tab'))
@@ -3967,6 +4411,7 @@
       formatPrice: function (p) { return formatCurrency(p); },
       onConfirm: async function (payload) {
         await accruePassiveIncome({ reason: 'place pen', renderStore: false });
+        await accrueCoopEggs({ reason: 'before mutation', renderStore: false, flush: false });
         if (economy.bucks < payload.paid) return;
         economy.bucks = Math.round((economy.bucks - payload.paid) * 100) / 100;
         payload.id = generateId();
@@ -3981,6 +4426,7 @@
   async function buyTrough(event) {
     if (isSleepFocusActive()) return;
     await accruePassiveIncome({ reason: 'before buy trough', renderStore: false });
+    await accrueCoopEggs({ reason: 'before mutation', renderStore: false, flush: false });
     const price = troughBuyPrice();
     if (economy.bucks < price) return;
     if (isCompactLayout()) switchTab('farm');
@@ -4003,25 +4449,61 @@
     if (!started) await renderStore();
   }
 
-  async function buyFlower(typeId, event) {
+  async function buyCoop(event) {
+    if (isSleepFocusActive()) return;
+    await accruePassiveIncome({ reason: 'before buy coop', renderStore: false });
+    await accrueCoopEggs({ reason: 'before mutation', renderStore: false, flush: false });
+    const price = coopBuyPrice();
+    if (economy.bucks < price) return;
+    if (isCompactLayout()) switchTab('farm');
+    const coop = { id: generateId(), paid: price, eggValue: 0, eggCarry: 0, totalEggValue: 0, lastEggAt: Date.now() };
+    const started = typeof startCoopPlacement === 'function' && startCoopPlacement(els.pigField, coop, {
+      clientX: event && event.clientX,
+      clientY: event && event.clientY,
+      banner: t('placeStoreItem', { name: t('coop') }),
+      priceText: formatCurrency(price),
+      onConfirm: async function (placement) {
+        await accruePassiveIncome({ reason: 'place coop', renderStore: false });
+        await accrueCoopEggs({ reason: 'before mutation', renderStore: false, flush: false });
+        if (economy.bucks < price) return;
+        economy.bucks = Math.round((economy.bucks - price) * 100) / 100;
+        economy.coops = (economy.coops || []).concat([Object.assign({}, coop, placement, { lastEggAt: Date.now() })]);
+        await persistEconomy();
+        renderPensAndTroughs(els.pigField);
+        await renderStore();
+      }
+    });
+    if (!started) await renderStore();
+  }
+
+  async function buyFlower(typeId, event, quantity) {
     if (isSleepFocusActive()) return;
     await accruePassiveIncome({ reason: 'before buy flower', renderStore: false });
+    await accrueCoopEggs({ reason: 'before mutation', renderStore: false, flush: false });
+    quantity = Math.max(1, quantity || 1);
     const owned = flowerOwnedCount(typeId);
-    const price = flowerPrice(typeId, owned);
+    const unitPrice = flowerPrice(typeId, owned);
+    const price = storeBatchPrice(unitPrice, quantity);
     const spec = flowerSpec(typeId);
     if (!spec || economy.bucks < price) return;
     if (isCompactLayout()) switchTab('farm');
-    const flower = { id: generateId(), type: typeId, paid: price };
+    const flower = { type: typeId, paid: unitPrice };
     const started = typeof startFlowerPlacement === 'function' && startFlowerPlacement(els.pigField, flower, {
+      quantity: quantity,
+      dragToPlace: quantity > 1,
       clientX: event && event.clientX,
       clientY: event && event.clientY,
-      banner: t('placeStoreItem', { name: t(spec.nameKey) }),
+      banner: t('placeStoreItem', { name: quantity > 1 ? t('storeItemQuantity', { n: quantity, name: t(spec.nameKey) }) : t(spec.nameKey) }),
       priceText: formatCurrency(price),
-      onConfirm: async function (placement) {
+      onConfirm: async function (placementPayload) {
         await accruePassiveIncome({ reason: 'place flower', renderStore: false });
         if (economy.bucks < price) return;
+        const placements = normalizePlacementBatch(placementPayload, quantity);
+        const nextFlowers = placements.map(function (placement) {
+          return Object.assign({ id: generateId(), type: typeId, paid: unitPrice }, placement || {});
+        });
         economy.bucks = Math.round((economy.bucks - price) * 100) / 100;
-        economy.flowers = (economy.flowers || []).concat([Object.assign({}, flower, placement)]);
+        economy.flowers = (economy.flowers || []).concat(nextFlowers);
         await persistEconomy();
         renderPensAndTroughs(els.pigField);
         await renderStore();
@@ -4033,6 +4515,7 @@
   async function sellPen(penId) {
     if (isSleepFocusActive()) return;
     await accruePassiveIncome({ reason: 'before sell pen', renderStore: false });
+    await accrueCoopEggs({ reason: 'before mutation', renderStore: false, flush: false });
     const pen = (economy.pens || []).find(function (p) { return p.id === penId; });
     if (!pen) return;
     const refund = Math.round((pen.paid || 0) * 0.5 * 100) / 100;
@@ -4045,6 +4528,7 @@
   async function sellTrough(troughId) {
     if (isSleepFocusActive()) return;
     await accruePassiveIncome({ reason: 'before sell trough', renderStore: false });
+    await accrueCoopEggs({ reason: 'before mutation', renderStore: false, flush: false });
     const tr = (economy.troughs || []).find(function (p) { return p.id === troughId; });
     if (!tr) return;
     const refund = Math.round((tr.paid || 0) * 0.5 * 100) / 100;
@@ -4054,9 +4538,38 @@
     await renderStore();
   }
 
+  async function sellCoop(coopId) {
+    if (isSleepFocusActive()) return;
+    await accruePassiveIncome({ reason: 'before sell coop', renderStore: false });
+    await accrueCoopEggs({ reason: 'before mutation', renderStore: false, flush: false });
+    const coop = (economy.coops || []).find(function (p) { return p.id === coopId; });
+    if (!coop) return;
+    const refund = Math.round((coop.paid || 0) * 0.5 * 100) / 100;
+    const eggs = Math.round((coop.eggValue || 0) * 100) / 100;
+    economy.bucks = Math.round((economy.bucks + refund + eggs) * 100) / 100;
+    if (typeof removeCoop === 'function') removeCoop(els.pigField, coopId);
+    await persistEconomy();
+    await renderStore();
+  }
+
+  async function sellCoopEggs() {
+    if (isSleepFocusActive()) return;
+    await accruePassiveIncome({ reason: 'before sell eggs', renderStore: false });
+    await accrueCoopEggs({ reason: 'before mutation', renderStore: false, flush: false });
+    const eggs = Math.round(coopEggValue() * 100) / 100;
+    if (eggs <= 0) return;
+    economy.bucks = Math.round((economy.bucks + eggs) * 100) / 100;
+    economy.coops = (economy.coops || []).map(function (coop) {
+      return Object.assign({}, coop, { eggValue: 0 });
+    });
+    await persistEconomy();
+    await renderStore();
+  }
+
   async function sellFlower(flowerId) {
     if (isSleepFocusActive()) return;
     await accruePassiveIncome({ reason: 'before sell flower', renderStore: false });
+    await accrueCoopEggs({ reason: 'before mutation', renderStore: false, flush: false });
     const fl = (economy.flowers || []).find(function (p) { return p.id === flowerId; });
     if (!fl) return;
     const refund = Math.round((fl.paid || 0) * 0.5 * 100) / 100;
@@ -4069,6 +4582,7 @@
   async function sellAnimalInstance(speciesId, instanceId) {
     if (isSleepFocusActive()) return;
     await accruePassiveIncome({ reason: 'before sell animal', renderStore: false });
+    await accrueCoopEggs({ reason: 'before mutation', renderStore: false, flush: false });
     const owned = economy.animals[speciesId] || 0;
     if (owned < 1) return;
     const refund = sellPrice(speciesId, owned);
@@ -4078,6 +4592,7 @@
     economy.bucks = Math.round((economy.bucks + refund) * 100) / 100;
     if (Number.isInteger(removedIndex)) {
       economy.animalNames = compactAnimalNames(economy.animalNames, speciesId, removedIndex);
+      economy.animalHappiness = compactAnimalHappiness(economy.animalHappiness, speciesId, removedIndex);
     }
     await persistEconomy();
     removeScatterAnimal(els.pigField, speciesId, instanceId);
@@ -4113,6 +4628,7 @@
       const img = e.target.closest && e.target.closest('.animal-scatter');
       const penEl = e.target.closest && e.target.closest('.pen-fence');
       const troughEl = e.target.closest && e.target.closest('.trough-object');
+      const coopEl = e.target.closest && e.target.closest('.coop-object');
       const flowerEl = e.target.closest && e.target.closest('.flower-object');
       let text = '';
       if (img) {
@@ -4124,6 +4640,10 @@
       } else if (troughEl) {
         const tr = (economy.troughs || []).find(function (p) { return p.id === troughEl.dataset.id; });
         text = t('sellTrough', { price: formatCurrency(Math.round((tr && tr.paid || 0) * 0.5 * 100) / 100) });
+      } else if (coopEl) {
+        const coop = (economy.coops || []).find(function (p) { return p.id === coopEl.dataset.id; });
+        const value = Math.round((((coop && coop.paid) || 0) * 0.5 + ((coop && coop.eggValue) || 0)) * 100) / 100;
+        text = t('sellCoop', { price: formatCurrency(value) });
       } else if (flowerEl) {
         const fl = (economy.flowers || []).find(function (p) { return p.id === flowerEl.dataset.id; });
         text = t('sellFlower', { price: formatCurrency(Math.round((fl && fl.paid || 0) * 0.5 * 100) / 100) });
@@ -4144,7 +4664,7 @@
       positionSellTip(e.clientX, e.clientY);
     });
     els.pigField.addEventListener('mouseout', function (e) {
-      const hit = e.target.closest && e.target.closest('.animal-scatter, .pen-fence, .trough-object, .flower-object');
+      const hit = e.target.closest && e.target.closest('.animal-scatter, .pen-fence, .trough-object, .coop-object, .flower-object');
       if (!hit) return;
       if (e.relatedTarget && hit.contains(e.relatedTarget)) return;
       hideSellTip();
@@ -4155,6 +4675,7 @@
       const img = e.target.closest && e.target.closest('.animal-scatter');
       const penEl = e.target.closest && e.target.closest('.pen-fence');
       const troughEl = e.target.closest && e.target.closest('.trough-object');
+      const coopEl = e.target.closest && e.target.closest('.coop-object');
       const flowerEl = e.target.closest && e.target.closest('.flower-object');
       if (img) {
         e.preventDefault();
@@ -4171,6 +4692,12 @@
       if (troughEl) {
         e.preventDefault();
         sellTrough(troughEl.dataset.id);
+        hideSellTip();
+        return;
+      }
+      if (coopEl) {
+        e.preventDefault();
+        sellCoop(coopEl.dataset.id);
         hideSellTip();
         return;
       }

@@ -25,6 +25,9 @@
   const PASSIVE_OFFLINE_CAP_HOURS = 8;
   const PASSIVE_DAMPED_HOUR_VALUE = 0.5;
   const PASSIVE_INACTIVE_MULTIPLIER = 0.35;
+  const PET_PRODUCTIVITY_MAX_BONUS = 0.25;
+  const COOP_CHICKEN_EGG_VALUE_PER_HOUR = 0.45;
+  const COOP_DUCK_EGG_VALUE_PER_HOUR = 3.5;
 
   function roundMoney(n) {
     return Math.round((Number(n) || 0) * 100) / 100;
@@ -33,6 +36,16 @@
   function safeCount(animals, id) {
     const n = animals && Number(animals[id]);
     return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }
+
+  function happinessValue(animalHappiness, instanceId) {
+    const n = animalHappiness && Number(animalHappiness[instanceId]);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return Math.max(0, Math.min(100, n));
+  }
+
+  function happinessProductivity(animalHappiness, instanceId) {
+    return 1 + (happinessValue(animalHappiness, instanceId) / 100) * PET_PRODUCTIVITY_MAX_BONUS;
   }
 
   function copySpecies(spec) {
@@ -73,7 +86,7 @@
       return roundMoney(this.buyPrice(speciesId, ownedCount) * 0.5);
     }
 
-    incomeBase(animals) {
+    incomeBase(animals, animalHappiness) {
       let total = 1;
       let speciesOwned = 0;
       this._species.forEach((spec) => {
@@ -81,7 +94,8 @@
         if (!count) return;
         speciesOwned += 1;
         for (let i = 0; i < count; i++) {
-          total += spec.yield * Math.pow(REPEAT_YIELD_DECAY, i);
+          const instanceId = spec.id + '-' + (i + 1);
+          total += spec.yield * Math.pow(REPEAT_YIELD_DECAY, i) * happinessProductivity(animalHappiness, instanceId);
         }
       });
       const diversityBonus = Math.min(
@@ -99,25 +113,25 @@
       return roundMoney(1 + softBonus);
     }
 
-    cardReward(animals, farmMultiplier) {
+    cardReward(animals, farmMultiplier, animalHappiness) {
       const farm = Number.isFinite(Number(farmMultiplier)) ? Math.max(1, Number(farmMultiplier)) : 1;
-      return roundMoney(this.incomeBase(animals) * farm);
+      return roundMoney(this.incomeBase(animals, animalHappiness) * farm);
     }
 
-    passiveHourly(animals, farmMultiplier) {
+    passiveHourly(animals, farmMultiplier, animalHappiness) {
       const farm = Number.isFinite(Number(farmMultiplier)) ? Math.max(1, Number(farmMultiplier)) : 1;
-      const animalCardValue = Math.max(0, this.incomeBase(animals) - 1) * farm;
+      const animalCardValue = Math.max(0, this.incomeBase(animals, animalHappiness) - 1) * farm;
       return roundMoney(animalCardValue * PASSIVE_CARD_EQUIVALENTS_PER_HOUR);
     }
 
-    passiveAccrual(animals, farmMultiplier, elapsedMs, carry, active) {
+    passiveAccrual(animals, farmMultiplier, elapsedMs, carry, active, animalHappiness) {
       const elapsedHours = Math.max(0, (Number(elapsedMs) || 0) / 3600000);
       const cappedHours = Math.min(elapsedHours, PASSIVE_OFFLINE_CAP_HOURS);
       const effectiveHours = cappedHours <= PASSIVE_FULL_HOURS
         ? cappedHours
         : PASSIVE_FULL_HOURS + ((cappedHours - PASSIVE_FULL_HOURS) * PASSIVE_DAMPED_HOUR_VALUE);
       const activityMultiplier = active ? 1 : PASSIVE_INACTIVE_MULTIPLIER;
-      const raw = (this.passiveHourly(animals, farmMultiplier) * effectiveHours * activityMultiplier) + Math.max(0, Number(carry) || 0);
+      const raw = (this.passiveHourly(animals, farmMultiplier, animalHappiness) * effectiveHours * activityMultiplier) + Math.max(0, Number(carry) || 0);
       const amount = Math.floor((raw + 1e-9) * 100) / 100;
       return {
         amount: roundMoney(amount),
@@ -167,6 +181,17 @@
 
     percentFromMultiplier(multiplier) {
       return Math.round((Math.max(1, Number(multiplier) || 1) - 1) * 100);
+    }
+
+    animalProductivityMultiplier(animalHappiness, instanceId) {
+      return roundMoney(happinessProductivity(animalHappiness, instanceId));
+    }
+
+    coopHourlyValue(chickens, ducks, penMultiplier) {
+      const birdValue = Math.max(0, Number(chickens) || 0) * COOP_CHICKEN_EGG_VALUE_PER_HOUR +
+        Math.max(0, Number(ducks) || 0) * COOP_DUCK_EGG_VALUE_PER_HOUR;
+      const pen = Number.isFinite(Number(penMultiplier)) ? Math.max(1, Number(penMultiplier)) : 1;
+      return roundMoney(birdValue * pen);
     }
   }
 

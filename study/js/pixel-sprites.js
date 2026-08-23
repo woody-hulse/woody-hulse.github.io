@@ -491,7 +491,8 @@
     else if (name === 'help') c.rect(4, 2, 4, 1, 'ink').rect(3, 3, 1, 2, 'ink').rect(8, 3, 1, 3, 'ink').rect(6, 5, 2, 1, 'ink').rect(5, 6, 2, 1, 'ink').rect(5, 7, 1, 1, 'ink').rect(5, 9, 2, 2, 'ink').rect(5, 3, 2, 1, 'light').rect(7, 4, 1, 1, 'light');
     else if (name === 'trash') c.rect(3, 3, 6, 1, 'ink').rect(4, 4, 4, 6, 'red').rect(5, 2, 2, 1, 'ink').rect(5, 5, 1, 4, 'ink').rect(7, 5, 1, 4, 'ink');
     else if (name === 'fence') c.rect(1, 4, 10, 1, 'wood').rect(1, 7, 10, 1, 'wood').rect(2, 2, 2, 8, 'mid').rect(8, 2, 2, 8, 'mid');
-    else if (name === 'trough') c.rect(2, 6, 8, 3, 'wood').rect(3, 4, 6, 2, 'blue').rect(1, 9, 2, 2, 'ink').rect(9, 9, 2, 2, 'ink');
+    else if (name === 'trough') c.rect(1, 5, 10, 1, 'ink').rect(2, 4, 8, 1, 'mid').rect(3, 5, 6, 1, 'blue').rect(1, 6, 10, 3, 'ink').rect(2, 6, 8, 1, 'mid').rect(2, 7, 8, 1, 'wood').rect(2, 8, 8, 1, 'ink').rect(2, 9, 2, 2, 'wood').rect(8, 9, 2, 2, 'wood').dot(3, 10, 'ink').dot(8, 10, 'ink');
+    else if (name === 'coop') c.rect(3, 5, 6, 5, 'ink').rect(4, 6, 4, 3, 'wood').rect(2, 4, 8, 2, 'red').rect(4, 3, 4, 1, 'red').rect(5, 7, 2, 3, 'mid').rect(8, 8, 1, 1, 'yellow').rect(9, 9, 1, 1, 'white');
     else c.rect(3, 3, 6, 6, 'mid').rect(4, 4, 4, 4, 'light');
     return c;
   }
