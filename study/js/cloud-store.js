@@ -30,7 +30,7 @@
 // =========================================================================
 // FIRESTORE DATA SHAPE
 // =========================================================================
-//   users/{uid}/store/{key}   →   { data: "<json string>", updatedAt: <ts> }
+//   users/{uid}/store/{key}   ->   { data: "<json string>", updatedAt: <server ts>, clientUpdatedAt: <ms> }
 //
 // where {key} is the same storage key storage.js already uses
 // ('study_cards_v1', 'study_decks_v1', 'study_naists_v1', 'study_pigs_v1',
@@ -80,12 +80,14 @@ async function setupCloudStore() {
       isActive: function () { return false; },
       getCurrentUid: function () { return null; },
       activate: async function () { return false; },
+      cancelPendingActivation: function () { return false; },
       deactivate: async function () {},
       flush: async function () {}
     };
   }
 
   const cfg = window.FIREBASE_CONFIG;
+  const LOCAL_META_KEY = 'study_cloud_local_meta_v1';
 
   if (!isRealConfig(cfg)) {
     window.CloudStore = makeStub();
@@ -129,15 +131,80 @@ async function setupCloudStore() {
     return;
   }
 
+  function readLocalMeta() {
+    try {
+      const raw = localStorage.getItem(LOCAL_META_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function writeLocalMeta(meta) {
+    try {
+      localStorage.setItem(LOCAL_META_KEY, JSON.stringify(meta || {}));
+    } catch (_) {}
+  }
+
+  function normalizeMetaEntry(entry) {
+    if (!entry) return null;
+    if (typeof entry === 'number') return { ts: entry, uid: null, deleted: false };
+    if (typeof entry !== 'object') return null;
+    const ts = Number(entry.ts);
+    if (!Number.isFinite(ts) || ts <= 0) return null;
+    return {
+      ts: ts,
+      uid: entry.uid || null,
+      deleted: !!entry.deleted
+    };
+  }
+
+  function timestampMs(value) {
+    if (!value) return 0;
+    if (typeof value.toMillis === 'function') return value.toMillis();
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    return 0;
+  }
+
+  function mirrorLocalRevision(key, value, deleted, ts) {
+    try {
+      if (deleted) localStorage.removeItem(key);
+      else localStorage.setItem(key, value);
+      const meta = readLocalMeta();
+      meta[key] = {
+        uid: currentUid || null,
+        ts: ts,
+        deleted: !!deleted
+      };
+      writeLocalMeta(meta);
+    } catch (e) {
+      console.error('CloudStore: local recovery mirror failed for "' + key + '"', e);
+    }
+  }
+
+  function localValueBelongsToUid(key, uid, meta) {
+    const entry = normalizeMetaEntry(meta[key]);
+    // No entry means legacy local-only data, which is exactly what first
+    // cloud sign-in should migrate when the cloud store is empty.
+    return !entry || !entry.uid || entry.uid === uid;
+  }
+
   // ---- per-session state ----
   let currentUid = null;
   let active = false;
   let cache = {};                    // key -> JSON string (mirrors localStorage values)
+  let cacheUpdatedAt = {};           // key -> newest known client/server ms
+  let activationSeq = 0;
   const dirty = new Set();           // keys with a coalesced write pending
   const outstanding = new Set();     // in-flight write promises (for flush())
 
+  function docRefFor(uid, key) {
+    return firestore.doc(firestore.db, 'users', uid, 'store', key);
+  }
+
   function docRef(key) {
-    return firestore.doc(firestore.db, 'users', currentUid, 'store', key);
+    return docRefFor(currentUid, key);
   }
 
   // Micro-task-coalesced write-through: multiple setItem() calls in the same
@@ -152,7 +219,8 @@ async function setupCloudStore() {
         if (key in cache) {
           await firestore.setDoc(docRef(key), {
             data: cache[key],
-            updatedAt: firestore.serverTimestamp()
+            updatedAt: firestore.serverTimestamp(),
+            clientUpdatedAt: cacheUpdatedAt[key] || Date.now()
           });
         } else {
           await firestore.deleteDoc(docRef(key));
@@ -172,23 +240,34 @@ async function setupCloudStore() {
       return Object.prototype.hasOwnProperty.call(cache, key) ? cache[key] : null;
     },
     setItem: function (key, value) {
+      const ts = Date.now();
       cache[key] = value;
+      cacheUpdatedAt[key] = ts;
+      mirrorLocalRevision(key, value, false, ts);
       scheduleWrite(key);
     },
     removeItem: function (key) {
+      const ts = Date.now();
       delete cache[key];
+      cacheUpdatedAt[key] = ts;
+      mirrorLocalRevision(key, null, true, ts);
       scheduleWrite(key);
-    }
+    },
+    flush: function () { return window.CloudStore.flush(); }
   };
 
-  async function loadCache() {
+  async function loadCache(uid) {
     cache = {};
+    cacheUpdatedAt = {};
     // Server read (throws if Firestore is unreachable / not yet created) — see
     // the getDocsFromServer note above.
-    const snap = await firestore.getDocsFromServer(firestore.collection(firestore.db, 'users', currentUid, 'store'));
+    const snap = await firestore.getDocsFromServer(firestore.collection(firestore.db, 'users', uid, 'store'));
     snap.forEach(function (d) {
       const v = d.data();
-      if (v && typeof v.data === 'string') cache[d.id] = v.data;
+      if (v && typeof v.data === 'string') {
+        cache[d.id] = v.data;
+        cacheUpdatedAt[d.id] = Math.max(timestampMs(v.updatedAt), Number(v.clientUpdatedAt) || 0);
+      }
     });
   }
 
@@ -197,7 +276,7 @@ async function setupCloudStore() {
   // work. Idempotent: only runs when the cloud side has none of the core
   // keys, so once data exists in Firestore this is skipped forever. Never
   // overwrites existing cloud data with local data.
-  async function migrateLocalIfCloudEmpty() {
+  async function migrateLocalIfCloudEmpty(uid) {
     const keys = syncKeys();
     const cloudEmpty = keys.every(function (k) { return !(k in cache); });
     if (!cloudEmpty) return false;
@@ -206,13 +285,18 @@ async function setupCloudStore() {
       ? window.StudyStorage.localGet
       : function (k) { return localStorage.getItem(k); };
 
+    const meta = readLocalMeta();
     const batch = firestore.writeBatch(firestore.db);
     let migratedAny = false;
     keys.forEach(function (k) {
+      if (!localValueBelongsToUid(k, uid, meta)) return;
       const localVal = localGet(k);
       if (localVal !== null && localVal !== undefined) {
+        const entry = normalizeMetaEntry(meta[k]);
+        const ts = (entry && entry.ts) || Date.now();
         cache[k] = localVal; // seed cache immediately so this session sees it
-        batch.set(docRef(k), { data: localVal, updatedAt: firestore.serverTimestamp() });
+        cacheUpdatedAt[k] = ts;
+        batch.set(docRefFor(uid, k), { data: localVal, updatedAt: firestore.serverTimestamp(), clientUpdatedAt: ts });
         migratedAny = true;
       }
     });
@@ -229,23 +313,68 @@ async function setupCloudStore() {
     return migratedAny;
   }
 
+  async function recoverLocalMirrorIfNewer(uid) {
+    const keys = syncKeys();
+    const meta = readLocalMeta();
+    const localGet = (window.StudyStorage && window.StudyStorage.localGet)
+      ? window.StudyStorage.localGet
+      : function (k) { return localStorage.getItem(k); };
+    const batch = firestore.writeBatch(firestore.db);
+    let recoveredAny = false;
+
+    keys.forEach(function (k) {
+      const entry = normalizeMetaEntry(meta[k]);
+      if (!entry || entry.uid !== uid) return;
+      if (entry.ts <= (cacheUpdatedAt[k] || 0)) return;
+      if (entry.deleted) {
+        delete cache[k];
+        cacheUpdatedAt[k] = entry.ts;
+        batch.delete(docRefFor(uid, k));
+        recoveredAny = true;
+        return;
+      }
+      const localVal = localGet(k);
+      if (localVal === null || localVal === undefined) return;
+      cache[k] = localVal;
+      cacheUpdatedAt[k] = entry.ts;
+      batch.set(docRefFor(uid, k), {
+        data: localVal,
+        updatedAt: firestore.serverTimestamp(),
+        clientUpdatedAt: entry.ts
+      });
+      recoveredAny = true;
+    });
+
+    if (recoveredAny) {
+      try {
+        await batch.commit();
+      } catch (e) {
+        // Non-fatal: local meta remains newer, so the next activation can retry.
+        console.error('CloudStore: local recovery mirror could not be pushed yet.', e);
+      }
+    }
+    return recoveredAny;
+  }
+
   window.CloudStore = {
     isConfigured: true,
 
     isActive: function () { return active; },
     getCurrentUid: function () { return currentUid; },
 
-    // Load this user's data into the cache, run the one-time local→cloud
-    // migration if needed, and install the cloud backend so every subsequent
-    // storage.js read/write hits Firestore. MUST be awaited before the app
-    // renders. Idempotent for an already-active uid.
+    // Load this user's data into the cache, run the one-time local->cloud
+    // migration or crash-recovery mirror if needed, and install the cloud backend
+    // so every subsequent storage.js read/write hits Firestore. Idempotent for
+    // an already-active uid.
     activate: async function (uid) {
       if (!uid) return false;
       if (active && currentUid === uid) return true;
+      const seq = ++activationSeq;
       currentUid = uid;
       try {
-        await loadCache();
-        await migrateLocalIfCloudEmpty();
+        await loadCache(uid);
+        const migrated = await migrateLocalIfCloudEmpty(uid);
+        if (!migrated) await recoverLocalMirrorIfNewer(uid);
       } catch (e) {
         // Firestore unreachable/denied/not-yet-created: don't leave the app
         // stuck. Fall back to the local backend for this session so the user
@@ -257,8 +386,29 @@ async function setupCloudStore() {
         active = false;
         return false;
       }
+      if (seq !== activationSeq || currentUid !== uid) {
+        if (!active) {
+          currentUid = null;
+          cache = {};
+          cacheUpdatedAt = {};
+        }
+        return false;
+      }
       window.StudyStorage.useBackend(cloudBackend);
       active = true;
+      return true;
+    },
+
+    // If app.js gives up waiting on an activation, do not let that slow
+    // activation install an old cloud cache later in the same session.
+    cancelPendingActivation: function (uid) {
+      if (active) return false;
+      if (uid && currentUid && currentUid !== uid) return false;
+      activationSeq++;
+      currentUid = null;
+      cache = {};
+      cacheUpdatedAt = {};
+      window.StudyStorage.useLocalBackend();
       return true;
     },
 
@@ -271,21 +421,31 @@ async function setupCloudStore() {
       active = false;
       currentUid = null;
       cache = {};
+      cacheUpdatedAt = {};
     },
 
     // Resolves once every outstanding write-through has settled.
     flush: async function () {
-      await Promise.allSettled(Array.from(outstanding));
+      for (let i = 0; i < 6; i++) {
+        if (dirty.size === 0 && outstanding.size === 0) return;
+        await Promise.allSettled(Array.from(outstanding));
+        await Promise.resolve();
+      }
     }
   };
 
   // Best-effort persistence of any in-flight writes if the tab is being
   // hidden/closed mid-burst.
-  window.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'hidden' && active) {
+  function flushOnLifecycleExit() {
+    if (active) {
       window.CloudStore.flush();
     }
+  }
+  window.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') flushOnLifecycleExit();
   });
+  window.addEventListener('pagehide', flushOnLifecycleExit);
+  window.addEventListener('beforeunload', flushOnLifecycleExit);
 
   window.dispatchEvent(new CustomEvent('cloudstore-ready', { detail: window.CloudStore }));
 }

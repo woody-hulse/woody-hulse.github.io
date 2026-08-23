@@ -1,31 +1,23 @@
-// pigs.js — animal image manifests, the spinning loading pig, and the
-// scattered farm animals that land in the page's side gutters.
+// pigs.js — pixel farm animals, the loading pig, and the generated pasture
+// objects that land in the page's side gutters.
 //
 // Position AND size use vw/vh so browser zoom does not change on-screen
 // size or placement. Pixel units would grow/shrink with zoom; viewport
 // units stay visually constant. Saved placements are also stored as vw/vh.
 
-const PIG_BASE_PATH = 'resources/pigs/';
-const ANIMAL_SPECIES_ORDER = ['chickens', 'sheep', 'ducks', 'retrievers', 'pigs', 'fish'];
-const ANIMAL_BASE_PATHS = {
-  chickens: 'resources/chickens/',
-  sheep: 'resources/sheep/',
-  ducks: 'resources/ducks/',
-  retrievers: 'resources/retrievers/',
-  pigs: 'resources/pigs/',
-  fish: 'resources/fish/'
-};
+const ANIMAL_SPECIES_ORDER = ['chickens', 'sheep', 'ducks', 'retrievers', 'pigs', 'fish', 'bison', 'horse', 'squid', 'giraffe', 'cat', 'lizard'];
 
-let _pigManifestPromise = null;
-const _speciesManifestPromises = {};
 let _placementLookup = function () { return {}; };
 let _onPlacementChange = null;
 let _animalDrag = null;
 let _penTroughLookup = function () { return { pens: [], troughs: [] }; };
 let _onPensChange = null;
 let _onTroughsChange = null;
+let _onFlowersChange = null;
 let _penPlacing = null;
+let _storePlacing = null;
 let _fieldDrag = null;
+let _farmFocusMode = 'roam';
 
 // Characteristic on-screen size (longer side) in vw. Bands sit below the
 // old ~4vw default so even a large sheep/pig reads smaller than today.
@@ -34,11 +26,20 @@ const SPECIES_HEIGHT_VW = {
   ducks: { min: 1.75, max: 2.20 },
   fish: { min: 1.75, max: 2.20 },
   retrievers: { min: 2.20, max: 2.65 },
+  cats: { min: 1.75, max: 2.15 },
+  cat: { min: 1.75, max: 2.15 },
+  lizard: { min: 1.55, max: 1.95 },
+  squid: { min: 2.00, max: 2.45 },
   pigs: { min: 2.55, max: 3.05 },
-  sheep: { min: 2.55, max: 3.05 }
+  sheep: { min: 2.55, max: 3.05 },
+  horse: { min: 2.75, max: 3.35 },
+  bison: { min: 2.85, max: 3.45 },
+  giraffe: { min: 3.15, max: 3.85 }
 };
 const TROUGH_HEIGHT_VW = 1.72;
 const TROUGH_ASPECT = 2.05;
+const FLOWER_FALLBACK_HEIGHT_VW = 1.9;
+const FLOWER_FALLBACK_ASPECT = 18 / 16;
 
 function _speciesHeightVw(species, rng) {
   const band = SPECIES_HEIGHT_VW[species] || { min: 1.8, max: 2.3 };
@@ -56,6 +57,12 @@ function _instanceSizeVw(species, rng, saved) {
 
 function _fitSpriteToSize(img, sizeVw) {
   img.dataset.sizeVw = String(sizeVw);
+  if (img.classList && img.classList.contains('pixel-animal')) {
+    const aspect = parseFloat(img.dataset.spriteAspect) || 1.125;
+    img.style.height = sizeVw + 'vw';
+    img.style.width = (sizeVw * aspect) + 'vw';
+    return;
+  }
   const nw = img.naturalWidth;
   const nh = img.naturalHeight;
   if (nw && nh && nw >= nh) {
@@ -71,57 +78,11 @@ function _randomChoice(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-async function loadPigManifest() {
-  if (!_pigManifestPromise) {
-    _pigManifestPromise = fetch(PIG_BASE_PATH + 'manifest.json').then(function (res) {
-      if (!res.ok) throw new Error('Could not load pig manifest');
-      return res.json();
-    });
-  }
-  return _pigManifestPromise;
-}
-
-async function loadSpeciesManifest(species) {
-  if (!_speciesManifestPromises[species]) {
-    const base = ANIMAL_BASE_PATHS[species] || PIG_BASE_PATH;
-    _speciesManifestPromises[species] = fetch(base + 'manifest.json').then(function (res) {
-      if (!res.ok) throw new Error('Could not load ' + species + ' manifest');
-      return res.json();
-    }).then(function (json) {
-      return { base: base, files: (json.transparent && json.transparent.length) ? json.transparent : [] };
-    }).catch(function () {
-      return { base: base, files: [] };
-    });
-  }
-  return _speciesManifestPromises[species];
-}
-
-async function getRandomPhotoPath() {
-  const manifest = await loadPigManifest();
-  return PIG_BASE_PATH + _randomChoice(manifest.photos);
-}
-
-async function getRandomTransparentPigPath() {
-  const manifest = await loadPigManifest();
-  return PIG_BASE_PATH + _randomChoice(manifest.transparent);
-}
-
-async function getSpinnerImagePath() {
-  const manifest = await loadPigManifest();
-  return PIG_BASE_PATH + (manifest.spinner || manifest.transparent[0]);
-}
-
 async function setSpinnerImage(imgEl) {
-  try {
-    imgEl.src = await getSpinnerImagePath();
-  } catch (e) {
-    // non-critical — leave it blank rather than breaking the loading UI
+  if (imgEl && window.PixelSprites && window.PixelSprites.paintAnimal) {
+    window.PixelSprites.paintAnimal(imgEl, 'pigs', { state: 'walk', variant: 0 });
+    window.PixelSprites.animate(imgEl, 'walk', 5);
   }
-}
-
-async function getMascotPath() {
-  const manifest = await loadPigManifest();
-  return PIG_BASE_PATH + (manifest.mascot || manifest.transparent[0]);
 }
 
 const PIG_ENCOURAGEMENTS_EN = [
@@ -156,10 +117,11 @@ function setAnimalPlacementHooks(lookup, onChange) {
   _onPlacementChange = typeof onChange === 'function' ? onChange : null;
 }
 
-function setPenTroughHooks(lookup, onPens, onTroughs) {
+function setPenTroughHooks(lookup, onPens, onTroughs, onFlowers) {
   _penTroughLookup = typeof lookup === 'function' ? lookup : function () { return { pens: [], troughs: [] }; };
   _onPensChange = typeof onPens === 'function' ? onPens : null;
   _onTroughsChange = typeof onTroughs === 'function' ? onTroughs : null;
+  _onFlowersChange = typeof onFlowers === 'function' ? onFlowers : null;
 }
 
 function isCompactLayout() {
@@ -389,84 +351,212 @@ function sortFieldByY(containerEl) {
   updatePenBoostChips(containerEl);
 }
 
+function _hasPixelSprites() {
+  return !!(window.PixelSprites && window.PixelSprites.renderAnimal && window.PixelSprites.paintAnimal);
+}
+
+function _clearAnimalLife(el) {
+  if (!el) return;
+  _clearAnimalTimer(el);
+  if (window.PixelSprites && window.PixelSprites.stop) window.PixelSprites.stop(el);
+  el.classList.remove('walking', 'resting');
+  el.style.transition = '';
+}
+
+function _clearAnimalTimer(el) {
+  if (!el) return;
+  if (el._animalLifeTimer) {
+    clearTimeout(el._animalLifeTimer);
+    el._animalLifeTimer = null;
+  }
+}
+
+function _setAnimalSpriteState(el, state, frame) {
+  if (!el || !_hasPixelSprites() || !el.classList.contains('pixel-animal')) return;
+  if (window.PixelSprites.stop) window.PixelSprites.stop(el);
+  window.PixelSprites.paintAnimal(el, el.dataset.species || 'pigs', {
+    state: state,
+    frame: frame || 0,
+    variant: el.dataset.variant || el.dataset.index || 0
+  });
+  if (state === 'walk') window.PixelSprites.animate(el, 'walk', 4);
+}
+
+function _movementBoundsForAnimal(el) {
+  const box = el.getBoundingClientRect();
+  const w = box.width || el.offsetWidth || _vwToPx(parseFloat(el.dataset.sizeVw) || 2);
+  const h = box.height || el.offsetHeight || w;
+  const cx = box.left + w / 2;
+  const cy = box.top + h / 2;
+  const state = _penTroughLookup() || {};
+  const pens = state.pens || [];
+  for (let i = 0; i < pens.length; i++) {
+    if (pointInPenPx(cx, cy, pens[i])) {
+      const r = _penDisplayRect(pens[i]);
+      const pad = Math.max(6, _vwToPx(0.45));
+      return {
+        minX: r.x + pad,
+        maxX: Math.max(r.x + pad, r.x + r.w - w - pad),
+        minY: r.y + pad,
+        maxY: Math.max(r.y + pad, r.y + r.h - h - pad)
+      };
+    }
+  }
+  const side = _sideForX(cx);
+  const top = _navHeightPx() + 10;
+  const bottom = (window.innerHeight || 1) - h - 10;
+  return {
+    minX: side.x + 4,
+    maxX: Math.max(side.x + 4, side.x + side.w - w - 4),
+    minY: top,
+    maxY: Math.max(top, bottom)
+  };
+}
+
+function _walkAnimal(el) {
+  if (!el || !el.parentNode || _farmFocusMode !== 'roam') return;
+  const bounds = _movementBoundsForAnimal(el);
+  const fromX = el.offsetLeft;
+  const fromY = el.offsetTop;
+  const seed = (parseInt(el.dataset.index, 10) || 1) + Date.now();
+  const rng = _mulberry32(seed >>> 0);
+  const dx = (rng() - 0.5) * Math.min(110, Math.max(24, bounds.maxX - bounds.minX));
+  const dy = (rng() - 0.5) * Math.min(70, Math.max(20, bounds.maxY - bounds.minY));
+  const x = Math.max(bounds.minX, Math.min(bounds.maxX, fromX + dx));
+  const y = Math.max(bounds.minY, Math.min(bounds.maxY, fromY + dy));
+  const duration = 1400 + Math.round(rng() * 900);
+  if (Math.abs(x - fromX) < 3 && Math.abs(y - fromY) < 3) {
+    _scheduleAnimalLife(el, 900);
+    return;
+  }
+  _applyFlip(el, x < fromX);
+  el.classList.add('walking');
+  _setAnimalSpriteState(el, 'walk', 0);
+  el.style.transition = 'left ' + duration + 'ms steps(10, end), top ' + duration + 'ms steps(10, end)';
+  el.style.left = _pxToVw(x) + 'vw';
+  el.style.top = _pxToVh(y) + 'vh';
+  sortFieldByY(el.parentNode);
+  el._animalLifeTimer = setTimeout(function () {
+    el.classList.remove('walking');
+    el.style.transition = '';
+    _setAnimalSpriteState(el, 'stand', 0);
+    sortFieldByY(el.parentNode);
+    _scheduleAnimalLife(el, 900 + Math.round(rng() * 1600));
+  }, duration + 40);
+}
+
+function _scheduleAnimalLife(el, delay) {
+  if (!el || !el.parentNode || !el.classList.contains('pixel-animal')) return;
+  if (_farmFocusMode === 'sleep') {
+    _clearAnimalLife(el);
+    _setAnimalSpriteState(el, 'sleep', 0);
+    el.classList.add('resting');
+    return;
+  }
+  if (_farmFocusMode === 'sit') {
+    _clearAnimalLife(el);
+    const state = (parseInt(el.dataset.index, 10) || 0) % 2 === 0 ? 'lie' : 'sit';
+    _setAnimalSpriteState(el, state, 0);
+    el.classList.add('resting');
+    return;
+  }
+  _clearAnimalTimer(el);
+  if (delay === 0) {
+    el.classList.remove('walking', 'resting');
+    _setAnimalSpriteState(el, 'stand', 0);
+  }
+  el._animalLifeTimer = setTimeout(function () {
+    if (!el.parentNode || _farmFocusMode !== 'roam') return;
+    const rng = _mulberry32((Date.now() + (parseInt(el.dataset.index, 10) || 1) * 97) >>> 0);
+    const roll = rng();
+    if (roll < 0.34) {
+      _walkAnimal(el);
+    } else {
+      const state = roll < 0.50 ? 'stand' : (roll < 0.72 ? 'sit' : 'lie');
+      _setAnimalSpriteState(el, state, 0);
+      el.classList.toggle('resting', state !== 'stand');
+      const nextDelay = state === 'lie'
+        ? 6500 + Math.round(rng() * 8500)
+        : (state === 'sit' ? 3600 + Math.round(rng() * 5200) : 1500 + Math.round(rng() * 2600));
+      _scheduleAnimalLife(el, nextDelay);
+    }
+  }, delay == null ? 600 : delay);
+}
+
+function setFarmFocusMode(mode) {
+  _farmFocusMode = (mode === 'sit' || mode === 'sleep') ? mode : 'roam';
+  const field = document.getElementById('pig-field');
+  if (_farmFocusMode === 'sleep') _cancelActiveFieldInteraction();
+  if (field) {
+    field.dataset.farmMode = _farmFocusMode;
+    Array.prototype.forEach.call(field.querySelectorAll('.animal-scatter'), function (el) {
+      _scheduleAnimalLife(el, 0);
+    });
+  }
+}
+
 function _spawnScatterAnimal(containerEl, species, index, opts) {
   opts = opts || {};
+  if (!_hasPixelSprites()) return null;
   const rng = _rngForAnimal(species, index);
-  const pool = opts.pool;
-  if (!pool || !pool.length) return null;
-  const imgPath = _choiceWithRng(pool, rng);
   const id = _instanceId(species, index);
   const saved = (_placementLookup() || {})[id];
-  const heightVw = _instanceSizeVw(species, rng, saved);
+  const placement = opts.placement || saved;
+  const heightVw = _instanceSizeVw(species, rng, placement);
   const sizePx = _vwToPx(heightVw);
 
-  const img = document.createElement('img');
-  img.src = (opts.base || '') + imgPath;
+  const img = window.PixelSprites.renderAnimal(species, { state: 'stand', variant: index });
   img.alt = '';
-  img.className = 'pig-scatter animal-scatter field-object' + (opts.falling ? ' falling' : '');
+  img.className = (img.className ? img.className + ' ' : '') + 'pig-scatter animal-scatter field-object';
   img.dataset.species = species;
   img.dataset.index = String(index);
   img.dataset.instanceId = id;
   img.dataset.kind = 'animal';
 
-  if (saved && typeof saved.leftVw === 'number' && typeof saved.topVh === 'number') {
-    _applyCanonicalPlacement(img, saved.leftVw, saved.topVh, heightVw, saved.flip);
+  if (placement && typeof placement.leftVw === 'number' && typeof placement.topVh === 'number') {
+    _applyCanonicalPlacement(img, placement.leftVw, placement.topVh, heightVw, placement.flip);
   } else {
     const pos = _pickScatterCanonical(sizePx, rng);
     _applyCanonicalPlacement(img, pos.leftVw, pos.topVh, heightVw, rng() < 0.5);
   }
 
   containerEl.appendChild(img);
-  img.addEventListener('load', function () {
-    _fitSpriteToSize(img, heightVw);
-    const canX = parseFloat(img.dataset.canX);
-    const topVh = parseFloat(img.dataset.topVh);
-    if (isFinite(canX) && isFinite(topVh)) {
-      _applyCanonicalPlacement(img, canX, topVh, heightVw, img.dataset.flip === '1');
-    }
-    sortFieldByY(containerEl);
-  });
-
-  if (opts.falling) {
-    img.addEventListener('animationend', function onEnd() {
-      img.removeEventListener('animationend', onEnd);
-      img.classList.remove('falling');
-      _applyFlip(img, img.dataset.flip === '1');
-      sortFieldByY(containerEl);
-    }, { once: true });
-  }
+  _fitSpriteToSize(img, heightVw);
+  _applyCanonicalPlacement(img, parseFloat(img.dataset.canX), parseFloat(img.dataset.topVh), heightVw, img.dataset.flip === '1');
+  sortFieldByY(containerEl);
+  _scheduleAnimalLife(img, 300 + Math.round(rng() * 1200));
 
   return img;
 }
 
 async function initScatteredAnimals(containerEl, animals) {
   containerEl.innerHTML = '';
+  if (!_hasPixelSprites()) return;
   const counts = animals || {};
   for (let s = 0; s < ANIMAL_SPECIES_ORDER.length; s++) {
     const species = ANIMAL_SPECIES_ORDER[s];
     const n = Math.max(0, counts[species] || 0);
     if (!n) continue;
-    const manifest = await loadSpeciesManifest(species);
-    if (!manifest.files.length) continue;
     for (let i = 1; i <= n; i++) {
-      _spawnScatterAnimal(containerEl, species, i, {
-        falling: false,
-        pool: manifest.files,
-        base: manifest.base
-      });
+      _spawnScatterAnimal(containerEl, species, i);
     }
   }
   sortFieldByY(containerEl);
   renderPensAndTroughs(containerEl);
+  setFarmFocusMode(_farmFocusMode);
 }
 
 async function addScatterAnimal(containerEl, species, index) {
-  const manifest = await loadSpeciesManifest(species);
-  if (!manifest.files.length) return null;
+  if (!_hasPixelSprites()) return null;
+  const img = _spawnScatterAnimal(containerEl, species, index);
+  sortFieldByY(containerEl);
+  return img;
+}
+
+async function addScatterAnimalAt(containerEl, species, index, placement) {
+  if (!_hasPixelSprites()) return null;
   const img = _spawnScatterAnimal(containerEl, species, index, {
-    falling: true,
-    pool: manifest.files,
-    base: manifest.base
+    placement: placement
   });
   sortFieldByY(containerEl);
   return img;
@@ -500,6 +590,7 @@ function removeScatterAnimal(containerEl, species, instanceId) {
     node = nodes.length ? nodes[nodes.length - 1] : null;
   }
   if (!node || !node.parentNode) return false;
+  _clearAnimalLife(node);
   const removedIndex = parseInt(node.dataset.index, 10);
   node.parentNode.removeChild(node);
   if (Number.isFinite(removedIndex)) {
@@ -521,7 +612,26 @@ function removeScatterAnimal(containerEl, species, instanceId) {
 
 function _uiBlocksFieldPointer(target) {
   if (!target || !target.closest) return false;
-  return !!target.closest('#top-nav, #tab-row, #tab-nav, #auth-screen, .overlay-card, #shortcuts-overlay, #new-deck-overlay, #text-prompt-overlay, #settings-overlay, #loading-overlay, #pig-encouragement-overlay, button, a, input, textarea, select, label');
+  return !!target.closest('#top-nav, #tab-row, #tab-nav, #auth-screen, .overlay-card, #shortcuts-overlay, #new-deck-overlay, #text-prompt-overlay, #pixel-modal-overlay, #settings-overlay, #loading-overlay, #pig-encouragement-overlay, button, a, input, textarea, select, label');
+}
+
+function _fieldInteractionLocked() {
+  return document.documentElement.classList.contains('focus-mode-sleep') ||
+    document.documentElement.dataset.focusMode === 'sleep';
+}
+
+function _cancelActiveFieldInteraction() {
+  _endAnimalDrag(false);
+  _endFieldDrag(false);
+  cancelStorePlacement();
+  cancelPenPlacement();
+  _setVisiblePenChip(null);
+  const field = document.getElementById('pig-field');
+  if (field) {
+    renderPensAndTroughs(field);
+    relayoutField(field);
+  }
+  window.StudyFieldGestureMoved = false;
 }
 
 function _inCenterColumn(clientX) {
@@ -533,7 +643,7 @@ function _inCenterColumn(clientX) {
 
 function _animalAtPoint(x, y) {
   const field = document.getElementById('pig-field');
-  if (!field || field.classList.contains('focus-hidden')) return null;
+  if (!field || field.classList.contains('focus-hidden') || _fieldInteractionLocked()) return null;
   const nodes = field.querySelectorAll('.animal-scatter');
   let hit = null;
   Array.prototype.forEach.call(nodes, function (el) {
@@ -543,9 +653,13 @@ function _animalAtPoint(x, y) {
   return hit;
 }
 
+function fieldAnimalAtPoint(x, y) {
+  return _animalAtPoint(x, y);
+}
+
 function _troughAtPoint(x, y) {
   const field = document.getElementById('pig-field');
-  if (!field || field.classList.contains('focus-hidden')) return null;
+  if (!field || field.classList.contains('focus-hidden') || _fieldInteractionLocked()) return null;
   let hit = null;
   Array.prototype.forEach.call(field.querySelectorAll('.trough-object'), function (el) {
     const r = el.getBoundingClientRect();
@@ -554,9 +668,20 @@ function _troughAtPoint(x, y) {
   return hit;
 }
 
+function _flowerAtPoint(x, y) {
+  const field = document.getElementById('pig-field');
+  if (!field || field.classList.contains('focus-hidden') || _fieldInteractionLocked()) return null;
+  let hit = null;
+  Array.prototype.forEach.call(field.querySelectorAll('.flower-object'), function (el) {
+    const r = el.getBoundingClientRect();
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) hit = el;
+  });
+  return hit;
+}
+
 function _penFenceAtPoint(x, y) {
   const field = document.getElementById('pig-field');
-  if (!field || field.classList.contains('focus-hidden')) return null;
+  if (!field || field.classList.contains('focus-hidden') || _fieldInteractionLocked()) return null;
   let hit = null;
   Array.prototype.forEach.call(field.querySelectorAll('.pen-fence'), function (el) {
     const r = el.getBoundingClientRect();
@@ -573,6 +698,7 @@ function _endAnimalDrag(save) {
   img.classList.remove('dragging');
   if (save && moved) _savePlacement(img);
   sortFieldByY(img.parentNode);
+  _scheduleAnimalLife(img, 600);
   _animalDrag = null;
 }
 
@@ -580,9 +706,9 @@ function _endFieldDrag(save) {
   if (!_fieldDrag) return;
   const drag = _fieldDrag;
   _fieldDrag = null;
-  if (drag.kind === 'trough') {
+  if (drag.kind === 'trough' || drag.kind === 'flower') {
     drag.el.classList.remove('dragging');
-    if (save && drag.moved && _onTroughsChange) {
+    if (drag.kind === 'trough' && save && drag.moved && _onTroughsChange) {
       const state = _penTroughLookup() || {};
       const troughs = (state.troughs || []).map(function (tr) {
         if (tr.id !== drag.id) return tr;
@@ -595,6 +721,21 @@ function _endFieldDrag(save) {
         };
       });
       _onTroughsChange(troughs);
+    }
+    if (drag.kind === 'flower' && save && drag.moved && _onFlowersChange) {
+      const state = _penTroughLookup() || {};
+      const flowers = (state.flowers || []).map(function (fl) {
+        if (fl.id !== drag.id) return fl;
+        return {
+          id: fl.id,
+          type: fl.type,
+          leftVw: _pxToCanX(drag.el.offsetLeft, drag.widthPx),
+          topVh: _pxToVh(drag.el.offsetTop),
+          heightVw: parseFloat(drag.el.dataset.sizeVw) || parseFloat(drag.el.style.height) || fl.heightVw,
+          paid: fl.paid
+        };
+      });
+      _onFlowersChange(flowers);
     }
     sortFieldByY(drag.el.parentNode);
     return;
@@ -642,7 +783,7 @@ function bindPenChipHover() {
   document.documentElement.dataset.penChipHoverBound = '1';
   window.addEventListener('pointermove', function (e) {
     const field = document.getElementById('pig-field');
-    if (!field || field.classList.contains('focus-hidden')) {
+    if (!field || field.classList.contains('focus-hidden') || _fieldInteractionLocked()) {
       _setVisiblePenChip(null);
       return;
     }
@@ -666,6 +807,10 @@ function bindAnimalFieldDrag() {
 
   window.addEventListener('pointerdown', function (e) {
     if (e.button != null && e.button !== 0) return;
+    if (_fieldInteractionLocked()) {
+      _cancelActiveFieldInteraction();
+      return;
+    }
     if (_penPlacing) return;
     window.StudyFieldGestureMoved = false;
     if (_uiBlocksFieldPointer(e.target)) return;
@@ -675,6 +820,7 @@ function bindAnimalFieldDrag() {
     if (_inCenterColumn(e.clientX)) return;
     const img = _animalAtPoint(e.clientX, e.clientY);
     if (img) {
+      _clearAnimalLife(img);
       const box = img.getBoundingClientRect();
       _animalDrag = {
         img: img,
@@ -700,6 +846,24 @@ function bindAnimalFieldDrag() {
         startY: e.clientY,
         origLeft: trough.offsetLeft,
         origTop: trough.offsetTop,
+        widthPx: box.width,
+        heightPx: box.height,
+        pointerId: e.pointerId,
+        moved: false
+      };
+      return;
+    }
+    const flower = _flowerAtPoint(e.clientX, e.clientY);
+    if (flower) {
+      const box = flower.getBoundingClientRect();
+      _fieldDrag = {
+        kind: 'flower',
+        el: flower,
+        id: flower.dataset.id,
+        startX: e.clientX,
+        startY: e.clientY,
+        origLeft: flower.offsetLeft,
+        origTop: flower.offsetTop,
         widthPx: box.width,
         heightPx: box.height,
         pointerId: e.pointerId,
@@ -735,6 +899,10 @@ function bindAnimalFieldDrag() {
   }, { capture: true, passive: false });
 
   window.addEventListener('pointermove', function (e) {
+    if (_fieldInteractionLocked()) {
+      _cancelActiveFieldInteraction();
+      return;
+    }
     if (_animalDrag) {
       if (_animalDrag.pointerId != null && e.pointerId !== _animalDrag.pointerId) return;
       const dx = e.clientX - _animalDrag.startX;
@@ -764,7 +932,7 @@ function bindAnimalFieldDrag() {
     _fieldDrag.moved = true;
     window.StudyFieldGestureMoved = true;
     e.preventDefault();
-    if (_fieldDrag.kind === 'trough') {
+    if (_fieldDrag.kind === 'trough' || _fieldDrag.kind === 'flower') {
       _fieldDrag.el.classList.add('dragging');
       const clamped = _clampPoint(
         _fieldDrag.origLeft + dx,
@@ -774,7 +942,6 @@ function bindAnimalFieldDrag() {
       );
       _fieldDrag.el.style.left = _pxToVw(clamped.x) + 'vw';
       _fieldDrag.el.style.top = _pxToVh(clamped.y) + 'vh';
-      sortFieldByY(_fieldDrag.el.parentNode);
     } else if (_fieldDrag.kind === 'pen') {
       const state = _penTroughLookup() || {};
       const pen = (state.pens || []).find(function (p) { return p.id === _fieldDrag.id; });
@@ -823,42 +990,34 @@ function _postCount(lengthVw) {
 
 function _hFenceSvg(lengthVw) {
   const L = Math.max(2, lengthVw);
-  const H = FENCE_H_VW;
   const n = _postCount(L);
-  const postW = FENCE_POST_VW;
   const parts = [];
-  const railH = 0.3;
-  [0.42, 0.9, 1.38].forEach(function (y) {
-    parts.push('<rect x="0" y="' + y + '" width="' + L + '" height="' + railH + '" rx="0.04" fill="#8b5a2b"/>');
-    parts.push('<rect x="0" y="' + y + '" width="' + L + '" height="0.07" fill="#a56b38"/>');
+  parts.push('<span class="pixel-fence-art pixel-fence-horizontal" aria-hidden="true">');
+  [34, 68].forEach(function (y, i) {
+    parts.push('<span class="pixel-fence-rail rail-' + i + '" style="top:' + y + '%"></span>');
   });
   for (let i = 0; i < n; i++) {
-    const x = n === 1 ? (L - postW) / 2 : (i / (n - 1)) * (L - postW);
-    parts.push('<rect x="' + x + '" y="0.08" width="' + postW + '" height="' + (H - 0.16) + '" rx="0.04" fill="#5c3a1e"/>');
-    parts.push('<rect x="' + x + '" y="0.08" width="0.06" height="' + (H - 0.16) + '" fill="#7a4e28"/>');
+    const x = n === 1 ? 50 : (i / (n - 1)) * 100;
+    parts.push('<span class="pixel-fence-post" style="left:' + x + '%"></span>');
   }
-  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + L + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true">' + parts.join('') + '</svg>';
+  parts.push('</span>');
+  return parts.join('');
 }
 
 function _vFenceSvg(lengthVw, side) {
   const D = Math.max(2, lengthVw);
-  const W = FENCE_POST_VW;
   const n = _postCount(D);
-  const postW = FENCE_POST_VW;
-  const spacing = n === 1 ? D : (D - 0.08) / (n - 1);
-  const postH = Math.min(1.28, Math.max(0.7, spacing * 0.62));
   const parts = [];
-  const railW = 0.05;
-  [0.03, 0.085, 0.14].forEach(function (x) {
-    parts.push('<rect x="' + x + '" y="0" width="' + railW + '" height="' + D + '" rx="0.02" fill="#8b5a2b"/>');
+  parts.push('<span class="pixel-fence-art pixel-fence-vertical pixel-fence-' + side + '" aria-hidden="true">');
+  [34, 66].forEach(function (x, i) {
+    parts.push('<span class="pixel-fence-rail rail-' + i + '" style="left:' + x + '%"></span>');
   });
   for (let i = 0; i < n; i++) {
-    const y = n === 1 ? (D - postH) / 2 : (i / (n - 1)) * (D - postH);
-    parts.push('<rect x="0" y="' + y + '" width="' + postW + '" height="' + postH + '" rx="0.03" fill="#5c3a1e"/>');
-    const hx = side === 'right' ? postW - 0.06 : 0;
-    parts.push('<rect x="' + hx + '" y="' + y + '" width="0.06" height="' + postH + '" fill="#7a4e28"/>');
+    const y = n === 1 ? 50 : (i / (n - 1)) * 100;
+    parts.push('<span class="pixel-fence-post" style="top:' + y + '%"></span>');
   }
-  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + D + '" preserveAspectRatio="none" aria-hidden="true">' + parts.join('') + '</svg>';
+  parts.push('</span>');
+  return parts.join('');
 }
 
 function _fenceSvg(kind, lengthVw) {
@@ -867,28 +1026,201 @@ function _fenceSvg(kind, lengthVw) {
 }
 
 function _troughSvg() {
-  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 110" aria-hidden="true">' +
-    '<rect x="40" y="56" width="11" height="46" rx="1.5" fill="#4a2e18"/>' +
-    '<rect x="169" y="56" width="11" height="46" rx="1.5" fill="#4a2e18"/>' +
-    '<rect x="24" y="46" width="172" height="28" rx="2" fill="#6e4526"/>' +
-    '<rect x="24" y="54" width="172" height="3" fill="#5c3a1e"/>' +
-    '<rect x="24" y="64" width="172" height="3" fill="#5c3a1e"/>' +
-    '<path d="M36 48 C36 66 64 80 110 80 C156 80 184 66 184 48 L184 42 C184 56 156 68 110 68 C64 68 36 56 36 42 Z" fill="#8a939b"/>' +
-    '<ellipse cx="110" cy="40" rx="74" ry="15" fill="#6e787f"/>' +
-    '<path d="M48 42 C62 52 86 56 110 56 C134 56 158 52 172 42" fill="none" stroke="#5c666d" stroke-width="1.4" stroke-linecap="round"/>' +
-    '<path d="M56 45 C70 53 90 56 110 56 C130 56 150 53 164 45" fill="none" stroke="#555e65" stroke-width="1.1" stroke-linecap="round"/>' +
-    '<ellipse cx="110" cy="44" rx="44" ry="6" fill="#c2d0d8"/>' +
-    '<ellipse cx="110" cy="38" rx="76" ry="16.5" fill="none" stroke="#d8dde2" stroke-width="4.5"/>' +
-    '<ellipse cx="110" cy="36.6" rx="76" ry="16.5" fill="none" stroke="#f3f5f7" stroke-width="1.4"/>' +
-    '<ellipse cx="110" cy="39.4" rx="76" ry="16.5" fill="none" stroke="#7e868e" stroke-width="1.2"/>' +
-    '<rect x="20" y="50" width="180" height="22" rx="2" fill="#8b5a2b"/>' +
-    '<rect x="20" y="50" width="180" height="6" fill="#a56b38"/>' +
-    '<rect x="20" y="66" width="180" height="4" fill="#6e4526"/>' +
-    '<rect x="22" y="54" width="13" height="50" rx="1.6" fill="#5c3a1e"/>' +
-    '<rect x="22" y="54" width="3.5" height="50" fill="#7a4e28"/>' +
-    '<rect x="185" y="54" width="13" height="50" rx="1.6" fill="#5c3a1e"/>' +
-    '<rect x="185" y="54" width="3.5" height="50" fill="#7a4e28"/>' +
-    '</svg>';
+  return '<span class="pixel-trough-art" aria-hidden="true">' +
+    '<span class="trough-leg leg-left"></span>' +
+    '<span class="trough-leg leg-right"></span>' +
+    '<span class="trough-bowl"></span>' +
+    '<span class="trough-water water-a"></span>' +
+    '<span class="trough-water water-b"></span>' +
+    '<span class="trough-rim rim-top"></span>' +
+    '<span class="trough-rim rim-front"></span>' +
+    '</span>';
+}
+
+function _flowerSize(type) {
+  const size = window.StudyFlowers && window.StudyFlowers.sizeFor
+    ? window.StudyFlowers.sizeFor(type)
+    : null;
+  return {
+    heightVw: (size && size.heightVw) || FLOWER_FALLBACK_HEIGHT_VW,
+    aspect: (size && size.aspect) || FLOWER_FALLBACK_ASPECT
+  };
+}
+
+function _paintFlower(el, type) {
+  if (window.StudyFlowers && window.StudyFlowers.paint) {
+    window.StudyFlowers.paint(el, type);
+  } else {
+    el.textContent = '*';
+  }
+}
+
+function _setStorePreviewAt(x, y) {
+  if (!_storePlacing || !_storePlacing.preview) return;
+  const preview = _storePlacing.preview;
+  const width = preview.offsetWidth || _storePlacing.widthPx || 32;
+  const height = preview.offsetHeight || _storePlacing.heightPx || width;
+  const clamped = _clampPoint(x - width / 2, y - height / 2, width, height);
+  preview.style.left = clamped.x + 'px';
+  preview.style.top = clamped.y + 'px';
+  preview.classList.toggle('placement-invalid', _inCenterColumn(x));
+  _storePlacing.last = {
+    x: clamped.x,
+    y: clamped.y,
+    widthPx: width,
+    heightPx: height
+  };
+  const priceEl = document.getElementById('field-place-price');
+  if (priceEl && _storePlacing.priceText) {
+    priceEl.hidden = false;
+    priceEl.textContent = _storePlacing.priceText;
+    priceEl.style.left = (clamped.x + width / 2) + 'px';
+    priceEl.style.top = Math.max(8, clamped.y - 30) + 'px';
+  }
+}
+
+function _placementPayload(extra) {
+  const last = _storePlacing && _storePlacing.last;
+  if (!last) return null;
+  return Object.assign({
+    leftVw: _pxToCanX(last.x, last.widthPx),
+    topVh: _pxToVh(last.y),
+    heightVw: _storePlacing.heightVw
+  }, extra || {});
+}
+
+function cancelStorePlacement() {
+  if (!_storePlacing) return;
+  const placing = _storePlacing;
+  _storePlacing = null;
+  window.removeEventListener('pointermove', placing.onMove);
+  window.removeEventListener('pointerdown', placing.onDown, true);
+  window.removeEventListener('keydown', placing.onKey);
+  const layer = document.getElementById('field-place-layer');
+  if (layer) layer.hidden = true;
+  const banner = document.getElementById('field-place-banner');
+  if (banner) banner.textContent = '';
+  const priceEl = document.getElementById('field-place-price');
+  if (priceEl) priceEl.hidden = true;
+  if (placing.preview && placing.preview.parentNode) placing.preview.parentNode.removeChild(placing.preview);
+  if (placing.cancelled !== false && placing.onCancel) placing.onCancel();
+}
+
+function _startStorePlacement(opts) {
+  opts = opts || {};
+  cancelPenPlacement();
+  cancelStorePlacement();
+  const layer = document.getElementById('field-place-layer');
+  const banner = document.getElementById('field-place-banner');
+  const priceEl = document.getElementById('field-place-price');
+  if (!layer || !opts.preview || document.documentElement.classList.contains('focus-mode')) return false;
+  layer.hidden = false;
+  if (banner) banner.textContent = opts.banner || '';
+  if (priceEl) priceEl.hidden = true;
+  opts.preview.classList.add('store-place-preview');
+  opts.preview.setAttribute('aria-hidden', 'true');
+  layer.appendChild(opts.preview);
+  _storePlacing = {
+    preview: opts.preview,
+    heightVw: opts.heightVw,
+    priceText: opts.priceText,
+    onConfirm: opts.onConfirm,
+    onCancel: opts.onCancel,
+    last: null
+  };
+  _storePlacing.onMove = function (e) {
+    _setStorePreviewAt(e.clientX, e.clientY);
+  };
+  _storePlacing.onDown = function (e) {
+    if (!_storePlacing) return;
+    if (e.button != null && e.button !== 0) return;
+    if (e.clientY < _navHeightPx() + 8) return;
+    if (_inCenterColumn(e.clientX)) {
+      _setStorePreviewAt(e.clientX, e.clientY);
+      return;
+    }
+    e.preventDefault();
+    const placing = _storePlacing;
+    const payload = _placementPayload(opts.payload);
+    placing.cancelled = false;
+    cancelStorePlacement();
+    if (payload && placing.onConfirm) placing.onConfirm(payload);
+  };
+  _storePlacing.onKey = function (e) {
+    if (e.key === 'Escape') cancelStorePlacement();
+  };
+  window.addEventListener('pointermove', _storePlacing.onMove);
+  window.addEventListener('pointerdown', _storePlacing.onDown, true);
+  window.addEventListener('keydown', _storePlacing.onKey);
+  _setStorePreviewAt(opts.clientX || (window.innerWidth || 1) / 2, opts.clientY || (_navHeightPx() + 80));
+  return true;
+}
+
+function startAnimalPlacement(containerEl, species, index, opts) {
+  if (!containerEl || !_hasPixelSprites()) return false;
+  opts = opts || {};
+  const rng = _rngForAnimal(species, index);
+  const heightVw = _instanceSizeVw(species, rng, null);
+  const preview = window.PixelSprites.renderAnimal(species, { state: 'stand', variant: index });
+  preview.className = (preview.className ? preview.className + ' ' : '') + 'animal-placement-preview field-object';
+  _fitSpriteToSize(preview, heightVw);
+  return _startStorePlacement({
+    preview: preview,
+    heightVw: heightVw,
+    clientX: opts.clientX,
+    clientY: opts.clientY,
+    banner: opts.banner,
+    priceText: opts.priceText,
+    onConfirm: opts.onConfirm,
+    onCancel: opts.onCancel,
+    payload: { flip: rng() < 0.5 }
+  });
+}
+
+function startTroughPlacement(containerEl, trough, opts) {
+  if (!containerEl) return false;
+  opts = opts || {};
+  const heightVw = TROUGH_HEIGHT_VW;
+  const preview = document.createElement('div');
+  preview.className = 'trough-object field-object';
+  preview.style.height = heightVw + 'vw';
+  preview.style.width = (heightVw * TROUGH_ASPECT) + 'vw';
+  preview.innerHTML = _troughSvg();
+  return _startStorePlacement({
+    preview: preview,
+    heightVw: heightVw,
+    clientX: opts.clientX,
+    clientY: opts.clientY,
+    banner: opts.banner,
+    priceText: opts.priceText,
+    onConfirm: opts.onConfirm,
+    onCancel: opts.onCancel,
+    payload: { id: trough && trough.id, paid: trough && trough.paid }
+  });
+}
+
+function startFlowerPlacement(containerEl, flower, opts) {
+  if (!containerEl) return false;
+  flower = flower || {};
+  opts = opts || {};
+  const size = _flowerSize(flower.type);
+  const heightVw = size.heightVw;
+  const preview = document.createElement('span');
+  preview.className = 'flower-object field-object';
+  preview.style.height = heightVw + 'vw';
+  preview.style.width = (heightVw * (size.aspect || FLOWER_FALLBACK_ASPECT)) + 'vw';
+  _paintFlower(preview, flower.type);
+  return _startStorePlacement({
+    preview: preview,
+    heightVw: heightVw,
+    clientX: opts.clientX,
+    clientY: opts.clientY,
+    banner: opts.banner,
+    priceText: opts.priceText,
+    onConfirm: opts.onConfirm,
+    onCancel: opts.onCancel,
+    payload: { id: flower.id, type: flower.type, paid: flower.paid }
+  });
 }
 
 function _applyPenRect(container, pen) {
@@ -946,7 +1278,7 @@ function _applyPenRect(container, pen) {
 
 function renderPensAndTroughs(containerEl) {
   if (!containerEl) return;
-  Array.prototype.forEach.call(containerEl.querySelectorAll('.pen-fence, .trough-object, .pen-boost-chip'), function (el) {
+  Array.prototype.forEach.call(containerEl.querySelectorAll('.pen-fence, .trough-object, .flower-object, .pen-boost-chip'), function (el) {
     el.parentNode.removeChild(el);
   });
   const state = _penTroughLookup() || {};
@@ -963,6 +1295,24 @@ function renderPensAndTroughs(containerEl) {
     el.style.height = hVw + 'vw';
     el.style.width = (hVw * TROUGH_ASPECT) + 'vw';
     el.innerHTML = _troughSvg();
+    containerEl.appendChild(el);
+  });
+  (state.flowers || []).forEach(function (fl) {
+    const size = _flowerSize(fl.type);
+    const hVw = size.heightVw;
+    const aspect = size.aspect || FLOWER_FALLBACK_ASPECT;
+    const wPx = _vwToPx(hVw * aspect);
+    const el = document.createElement('span');
+    el.className = 'flower-object field-object';
+    el.dataset.kind = 'flower';
+    el.dataset.id = fl.id;
+    el.dataset.flowerType = fl.type;
+    el.dataset.sizeVw = String(hVw);
+    el.style.left = _pxToVw(_canXToPx(fl.leftVw, wPx)) + 'vw';
+    el.style.top = fl.topVh + 'vh';
+    el.style.height = hVw + 'vw';
+    el.style.width = (hVw * aspect) + 'vw';
+    _paintFlower(el, fl.type);
     containerEl.appendChild(el);
   });
   sortFieldByY(containerEl);
@@ -1108,6 +1458,13 @@ function removeTrough(containerEl, troughId) {
   renderPensAndTroughs(containerEl);
 }
 
+function removeFlower(containerEl, flowerId) {
+  const state = _penTroughLookup() || {};
+  const flowers = (state.flowers || []).filter(function (fl) { return fl.id !== flowerId; });
+  if (_onFlowersChange) _onFlowersChange(flowers);
+  renderPensAndTroughs(containerEl);
+}
+
 function addTroughAtDefault(containerEl, trough) {
   const rng = _mulberry32((Date.now() ^ 0x9e3779b9) >>> 0);
   const heightVw = TROUGH_HEIGHT_VW;
@@ -1119,6 +1476,22 @@ function addTroughAtDefault(containerEl, trough) {
   const state = _penTroughLookup() || {};
   const troughs = (state.troughs || []).concat([trough]);
   if (_onTroughsChange) _onTroughsChange(troughs);
+  renderPensAndTroughs(containerEl);
+}
+
+function addFlowerAtDefault(containerEl, flower) {
+  flower = flower || {};
+  const rng = _mulberry32((Date.now() ^ 0x85ebca6b) >>> 0);
+  const size = _flowerSize(flower.type);
+  const heightVw = size.heightVw;
+  const sizePx = _vwToPx(heightVw * (size.aspect || FLOWER_FALLBACK_ASPECT));
+  const pos = _pickScatterCanonical(sizePx, rng);
+  flower.leftVw = pos.leftVw;
+  flower.topVh = pos.topVh;
+  flower.heightVw = heightVw;
+  const state = _penTroughLookup() || {};
+  const flowers = (state.flowers || []).concat([flower]);
+  if (_onFlowersChange) _onFlowersChange(flowers);
   renderPensAndTroughs(containerEl);
 }
 
@@ -1149,6 +1522,7 @@ function cancelPenPlacement() {
 
 function startPenPlacement(opts) {
   opts = opts || {};
+  cancelStorePlacement();
   cancelPenPlacement();
   const layer = document.getElementById('field-place-layer');
   const preview = document.getElementById('pen-preview');
@@ -1212,7 +1586,7 @@ function startPenPlacement(opts) {
     const rect = _clampPenRectPx(x0, y0, Math.max(8, x1 - x0), Math.max(8, y1 - y0), _penPlacing.side);
     const widthCan = _pxWToCan(rect.w, rect.x);
     const heightVh = _pxToVh(rect.h);
-    const confirm = _penPlacing.opts.onConfirm;
+    const onConfirm = _penPlacing.opts.onConfirm;
     const priceFn = _penPlacing.opts.priceFn;
     layer.removeEventListener('pointerdown', onDown);
     window.removeEventListener('pointermove', onMove);
@@ -1234,7 +1608,7 @@ function startPenPlacement(opts) {
     preview.hidden = true;
     preview.innerHTML = '';
     if (priceEl) priceEl.hidden = true;
-    if (confirm) confirm(payload);
+    if (onConfirm) onConfirm(payload);
   }
   function onKey(e) {
     if (e.key === 'Escape') {
@@ -1276,4 +1650,3 @@ async function initScatteredPigs(containerEl, count) {
 async function addScatterPig(containerEl, index) {
   return addScatterAnimal(containerEl, 'pigs', index);
 }
-

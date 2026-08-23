@@ -3,33 +3,32 @@
 // Edit Deck card CRUD UI, stats, and the store/economy.
 
 (function () {
-  const ANIMAL_SHOP = [
+  const ANIMAL_SHOP = window.StudyEconomy && window.StudyEconomy.species ? window.StudyEconomy.species() : [
     { id: 'chickens', base: 15 },
     { id: 'sheep', base: 100 },
     { id: 'ducks', base: 1100 },
     { id: 'retrievers', base: 12000 },
     { id: 'pigs', base: 130000 },
-    { id: 'fish', base: 1400000 }
+    { id: 'fish', base: 1400000 },
+    { id: 'bison', base: 8500000 },
+    { id: 'horse', base: 45000000 },
+    { id: 'squid', base: 210000000 },
+    { id: 'giraffe', base: 980000000 },
+    { id: 'cat', base: 4200000000 },
+    { id: 'lizard', base: 18000000000 }
   ];
-  const PRICE_GROWTH = 1.15;
+  const PRICE_GROWTH = window.StudyEconomy && window.StudyEconomy.priceGrowth ? window.StudyEconomy.priceGrowth : 1.22;
   const ENCOURAGEMENT_INTERVAL = 10;
-  const STORE_BACKGROUNDS = [
-    { id: 'grass', nameKey: 'bgGrass', swatch: '#bfe08e', swatchImage: 'resources/grass.jpg', price: 120 }
-  ];
-  const ANIMAL_THUMBS = {
-    chickens: 'resources/chickens/chicken-standing.png',
-    sheep: 'resources/sheep/sheep-standing.png',
-    ducks: 'resources/ducks/duck-standing.png',
-    retrievers: 'resources/retrievers/retriever-standing.png',
-    pigs: 'resources/pigs/transparent/piglet-standing-side.png',
-    fish: 'resources/fish/fish-goldfish.png'
-  };
 
   let currentUsername = null;
-  let economy = { bucks: 0, animals: { chickens: 0, sheep: 0, ducks: 0, retrievers: 0, pigs: 0, fish: 0 }, unlockedBackgrounds: [], animalPlacements: {}, pens: [], troughs: [] };
+  let economy = { bucks: 0, animals: { chickens: 0, sheep: 0, ducks: 0, retrievers: 0, pigs: 0, fish: 0, bison: 0, horse: 0, squid: 0, giraffe: 0, cat: 0, lizard: 0 }, unlockedAnimals: [], unlockedBackgrounds: [], animalPlacements: {}, animalNames: {}, pens: [], troughs: [], flowers: [], passiveIncome: { version: 1, lastAccruedAt: 0, carry: 0, totalEarned: 0, lastClaimedAt: 0, lastClaimedAmount: 0 } };
   let addFormTags = [];
   let occlusionFormTags = [];
   let knownTags = [];
+  let passiveIncomeTimer = null;
+  let passiveIncomeBusy = false;
+  let passiveIncomeWasVisible = !document.hidden;
+  let passiveIncomeLastPersistAt = 0;
 
   // Guards the cloud sign-in entry path. A single authenticated user can be
   // reported from three overlapping sources (the signInWithGoogle() return
@@ -193,29 +192,42 @@
     els.textPromptInput = document.getElementById('text-prompt-input');
     els.textPromptCancel = document.getElementById('text-prompt-cancel');
     els.textPromptConfirm = document.getElementById('text-prompt-confirm');
+    els.pixelModalOverlay = document.getElementById('pixel-modal-overlay');
+    els.pixelModalTitle = document.getElementById('pixel-modal-title');
+    els.pixelModalMessage = document.getElementById('pixel-modal-message');
+    els.pixelModalCancel = document.getElementById('pixel-modal-cancel');
+    els.pixelModalConfirm = document.getElementById('pixel-modal-confirm');
 
     // ---- settings overlay ----
     els.settingsOverlay = document.getElementById('settings-overlay');
     els.settingsNicknameValue = document.getElementById('settings-nickname-value');
     els.settingsNicknameBtn = document.getElementById('settings-nickname-btn');
     els.settingsAccentSwatches = document.getElementById('settings-accent-swatches');
-    els.settingsBgSwatches = document.getElementById('settings-bg-swatches');
-    els.settingsBgImageInput = document.getElementById('settings-bg-image-input');
-    els.settingsBgImageBtn = document.getElementById('settings-bg-image-btn');
-    els.settingsBgImageClear = document.getElementById('settings-bg-image-clear');
-    els.settingsBgStatus = document.getElementById('settings-bg-status');
     els.settingsSignoutSection = document.getElementById('settings-signout-section');
     els.settingsSignoutBtn = document.getElementById('settings-signout-btn');
     els.settingsCloseBtn = document.getElementById('settings-close-btn');
+    els.spriteLabOpenBtn = document.getElementById('sprite-lab-open-btn');
+    els.spriteLabOverlay = document.getElementById('sprite-lab-overlay');
+    els.spriteLabSpecies = document.getElementById('sprite-lab-species');
+    els.spriteLabState = document.getElementById('sprite-lab-state');
+    els.spriteLabFrame = document.getElementById('sprite-lab-frame');
+    els.spriteLabPlayBtn = document.getElementById('sprite-lab-play-btn');
+    els.spriteLabPreview = document.getElementById('sprite-lab-preview');
+    els.spriteLabGrid = document.getElementById('sprite-lab-grid');
+    els.spriteLabPalette = document.getElementById('sprite-lab-palette');
+    els.spriteLabOutput = document.getElementById('sprite-lab-output');
+    els.spriteLabResetBtn = document.getElementById('sprite-lab-reset-btn');
+    els.spriteLabCloseBtn = document.getElementById('sprite-lab-close-btn');
     els.settingsThemeRow = document.getElementById('settings-theme-row');
     els.settingsVocabToggle = document.getElementById('settings-vocab-toggle');
-    els.settingsFocusToggle = document.getElementById('settings-focus-toggle');
+    els.settingsFocusModeRow = document.getElementById('settings-focus-mode-row');
     els.settingsEncouragementToggle = document.getElementById('settings-encouragement-toggle');
     els.addCardTags = document.getElementById('add-card-tags');
     els.occlusionCardTags = document.getElementById('occlusion-card-tags');
     els.storeAnimalList = document.getElementById('store-animal-list');
     els.storeFarmList = document.getElementById('store-farm-list');
-    els.storeBgList = document.getElementById('store-bg-list');
+    els.storeAnimalsLabel = document.getElementById('store-animals-label');
+    els.storeFarmLabel = document.getElementById('store-farm-label');
 
     // ---- Naists tab ----
     els.naistsBreadcrumb = document.getElementById('naists-breadcrumb');
@@ -392,10 +404,9 @@
 
   // Activates the Firestore-backed storage for `uid`, but never lets a slow or
   // hung Firestore call block entry into the app. If activate() doesn't settle
-  // within `ms`, we stop waiting and proceed on local storage; if it later
-  // resolves it simply installs the cloud backend and sync resumes. This is
-  // the safety net that guarantees a successful sign-in always reaches the app
-  // even when Firestore is unreachable or misconfigured.
+  // within `ms`, we stop waiting, cancel that activation, and keep this session
+  // on local storage. That avoids a late stale cloud cache replacing local
+  // progress after the user has already started studying.
   async function activateCloudStoreWithTimeout(uid, ms) {
     if (!(window.CloudStore && window.CloudStore.isConfigured)) return;
     let timer;
@@ -412,10 +423,28 @@
       ]);
       if (outcome === '__timeout__') {
         console.error('CloudStore.activate timed out; proceeding on local storage.');
+        if (window.CloudStore.cancelPendingActivation) window.CloudStore.cancelPendingActivation(uid);
       }
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  async function flushStorageNow(reason) {
+    try {
+      if (typeof flushStudyStorage === 'function') {
+        await flushStudyStorage();
+      } else if (window.StudyStorage && typeof window.StudyStorage.flush === 'function') {
+        await window.StudyStorage.flush();
+      }
+    } catch (e) {
+      console.error('Storage flush failed' + (reason ? ' after ' + reason : '') + '.', e);
+    }
+  }
+
+  async function saveSettingsAndFlush(settings) {
+    await saveSettings(settings);
+    await flushStorageNow('settings change');
   }
 
   // Single, idempotent path into the app for an authenticated cloud user.
@@ -552,7 +581,7 @@
     setFunSpellings(!!settings.funSpellings);
     applyI18n(document);
     await applyAppearanceFromSettings();
-    applyFocusMode(!!settings.focusMode);
+    applyFocusMode(settings.focusMode);
     applySellMode(false);
 
     refreshGreeting();
@@ -568,8 +597,12 @@
     bindShortcutsOverlay();
     bindPigOverlay();
     bindSettingsOverlay();
+    bindSpriteLab();
     bindTextPrompt();
+    bindPixelModal();
     bindAnimalSell();
+    bindAnimalNames();
+    bindPassiveIncome();
     setAnimalPlacementHooks(
       function () { return economy.animalPlacements || {}; },
       function (next) {
@@ -578,15 +611,18 @@
       }
     );
     setPenTroughHooks(
-      function () { return { pens: economy.pens || [], troughs: economy.troughs || [] }; },
+      function () { return { pens: economy.pens || [], troughs: economy.troughs || [], flowers: economy.flowers || [] }; },
       function (pens) { economy.pens = pens; persistEconomy(); },
-      function (troughs) { economy.troughs = troughs; persistEconomy(); }
+      function (troughs) { economy.troughs = troughs; persistEconomy(); },
+      function (flowers) { economy.flowers = flowers; persistEconomy(); }
     );
     bindAnimalFieldDrag();
 
     await withLoading(async function () {
       await refreshKnownTags();
       await initScatteredAnimals(els.pigField, economy.animals);
+      syncAnimalNameAttributes();
+      await accruePassiveIncome({ reason: 'enter', renderStore: false });
       if (typeof syncFarmGap === 'function') syncFarmGap();
       await renderNaistsBrowser();
     });
@@ -620,31 +656,186 @@
   }
 
   function buyPrice(speciesId, ownedCount) {
+    if (window.StudyEconomy && window.StudyEconomy.buyPrice) {
+      return window.StudyEconomy.buyPrice(speciesId, ownedCount);
+    }
     const spec = ANIMAL_SHOP.find(function (s) { return s.id === speciesId; });
     if (!spec) return 0;
     return Math.round(spec.base * Math.pow(PRICE_GROWTH, ownedCount || 0) * 100) / 100;
   }
 
   function sellPrice(speciesId, ownedCount) {
+    if (window.StudyEconomy && window.StudyEconomy.sellPrice) {
+      return window.StudyEconomy.sellPrice(speciesId, ownedCount);
+    }
     return Math.round(buyPrice(speciesId, ownedCount) * 0.5 * 100) / 100;
   }
 
+  function flowerShop() {
+    return window.StudyFlowers && window.StudyFlowers.all ? window.StudyFlowers.all() : [];
+  }
+
+  function flowerSpec(typeId) {
+    if (window.StudyFlowers && window.StudyFlowers.has && !window.StudyFlowers.has(typeId)) return null;
+    if (window.StudyFlowers && window.StudyFlowers.get) return window.StudyFlowers.get(typeId);
+    return flowerShop().find(function (spec) { return spec.id === typeId; }) || null;
+  }
+
+  function flowerOwnedCount(typeId) {
+    return (economy.flowers || []).filter(function (fl) { return fl.type === typeId; }).length;
+  }
+
+  function flowerPrice(typeId, ownedCount) {
+    const spec = flowerSpec(typeId);
+    if (!spec) return 0;
+    const growth = window.StudyEconomy && window.StudyEconomy.flowerPriceGrowth
+      ? window.StudyEconomy.flowerPriceGrowth
+      : (window.StudyFlowers && window.StudyFlowers.priceGrowth ? window.StudyFlowers.priceGrowth : 1.18);
+    return Math.round(spec.base * Math.pow(growth, ownedCount || 0) * 100) / 100;
+  }
+
+  function flowerBonusMultiplier(flowers) {
+    if (window.StudyFlowers && window.StudyFlowers.multiplier) return window.StudyFlowers.multiplier(flowers || []);
+    return 1;
+  }
+
+  function flowerBonusPercent(flowers) {
+    return Math.round((flowerBonusMultiplier(flowers || []) - 1) * 100);
+  }
+
+  function formatBonus(n) {
+    const pct = Math.round((Number(n) || 0) * 100);
+    return (pct > 0 ? '+' : '') + pct + '%';
+  }
+
   function bucksPerRating(animals) {
-    let product = 1;
-    let any = false;
-    ANIMAL_SHOP.forEach(function (s) {
-      const n = (animals && animals[s.id]) || 0;
-      if (n >= 1) {
-        product *= n;
-        any = true;
-      }
-    });
-    const base = Math.max(1, any ? product : 1);
-    // M = 1 + per-pen trough (0.18·w(T)) and same-species (+0.15/animal) bonuses.
-    const boost = (typeof computeTroughBoost === 'function')
+    return window.StudyEconomy && window.StudyEconomy.cardReward
+      ? window.StudyEconomy.cardReward(animals, farmBoostMultiplier())
+      : Math.round(Math.max(1, 1) * farmBoostMultiplier() * 100) / 100;
+  }
+
+  function farmBoostMultiplier() {
+    const troughBoost = (typeof computeTroughBoost === 'function')
       ? computeTroughBoost(els.pigField, economy.pens, economy.troughs)
       : 1;
-    return Math.round(base * boost * 100) / 100;
+    const flowerBoost = flowerBonusMultiplier(economy.flowers);
+    if (window.StudyEconomy && window.StudyEconomy.farmMultiplier) {
+      return window.StudyEconomy.farmMultiplier(troughBoost, flowerBoost);
+    }
+    return Math.round(troughBoost * flowerBoost * 100) / 100;
+  }
+
+  function passiveIncomeState() {
+    if (!economy.passiveIncome || typeof economy.passiveIncome !== 'object' || Array.isArray(economy.passiveIncome)) {
+      economy.passiveIncome = { version: 1, lastAccruedAt: 0, carry: 0, totalEarned: 0, lastClaimedAt: 0, lastClaimedAmount: 0 };
+    }
+    return economy.passiveIncome;
+  }
+
+  function passiveBucksPerHour() {
+    if (window.StudyEconomy && window.StudyEconomy.passiveHourly) {
+      return window.StudyEconomy.passiveHourly(economy.animals, farmBoostMultiplier());
+    }
+    const farm = farmBoostMultiplier();
+    return Math.round(Math.max(0, bucksPerRating(economy.animals) - farm) * 4 * 100) / 100;
+  }
+
+  function passiveAccrualForElapsed(elapsedMs, active) {
+    const state = passiveIncomeState();
+    if (window.StudyEconomy && window.StudyEconomy.passiveAccrual) {
+      return window.StudyEconomy.passiveAccrual(economy.animals, farmBoostMultiplier(), elapsedMs, state.carry, active);
+    }
+    const hourly = passiveBucksPerHour();
+    const elapsedHours = Math.max(0, (Number(elapsedMs) || 0) / 3600000);
+    const cappedHours = Math.min(elapsedHours, 8);
+    const effectiveHours = cappedHours <= 2 ? cappedHours : 2 + ((cappedHours - 2) * 0.5);
+    const raw = (hourly * effectiveHours * (active ? 1 : 0.35)) + Math.max(0, Number(state.carry) || 0);
+    const amount = Math.floor((raw + 1e-9) * 100) / 100;
+    return {
+      amount: Math.round(amount * 100) / 100,
+      carry: Math.max(0, raw - amount),
+      creditedSeconds: Math.floor(effectiveHours * 3600),
+      capped: elapsedHours > cappedHours
+    };
+  }
+
+  async function accruePassiveIncome(opts) {
+    opts = opts || {};
+    if (passiveIncomeBusy || !economy) return { amount: 0, creditedSeconds: 0 };
+    passiveIncomeBusy = true;
+    try {
+      const now = Date.now();
+      const state = passiveIncomeState();
+      const last = Number(state.lastAccruedAt) || 0;
+      if (!last || last > now + 60000) {
+        state.lastAccruedAt = now;
+        state.lastClaimedAt = 0;
+        state.lastClaimedAmount = 0;
+        await persistEconomy();
+        return { amount: 0, creditedSeconds: 0, initialized: true };
+      }
+
+      const elapsed = now - last;
+      if (elapsed < 1000) return { amount: 0, creditedSeconds: 0 };
+      const active = opts.active !== undefined ? !!opts.active : (!document.hidden && opts.reason !== 'enter');
+      const accrual = passiveAccrualForElapsed(elapsed, active);
+      state.lastAccruedAt = now;
+      state.carry = Math.max(0, Number(accrual.carry) || 0);
+      if (accrual.amount > 0) {
+        economy.bucks = Math.round((economy.bucks + accrual.amount) * 100) / 100;
+        state.totalEarned = Math.round(((state.totalEarned || 0) + accrual.amount) * 100) / 100;
+        state.lastClaimedAt = now;
+        state.lastClaimedAmount = accrual.amount;
+      } else {
+        state.lastClaimedAt = 0;
+        state.lastClaimedAmount = 0;
+      }
+      const shouldPersist = opts.forcePersist || opts.reason !== 'timer' || now - passiveIncomeLastPersistAt >= 15000;
+      if (shouldPersist) await persistEconomy({ flush: opts.flush !== false });
+      else updateBucksDisplay();
+      if (opts.renderStore && activeTabName() === 'store') await renderStore();
+      return accrual;
+    } finally {
+      passiveIncomeBusy = false;
+    }
+  }
+
+  function bindPassiveIncome() {
+    if (document.documentElement.dataset.passiveIncomeBound) return;
+    document.documentElement.dataset.passiveIncomeBound = '1';
+    passiveIncomeWasVisible = !document.hidden;
+    passiveIncomeTimer = window.setInterval(function () {
+      if (!els.app || els.app.hidden || document.hidden) return;
+      accruePassiveIncome({ reason: 'timer', active: true, renderStore: true, flush: false });
+    }, 1000);
+    document.addEventListener('visibilitychange', function () {
+      if (!els.app || els.app.hidden) return;
+      const wasVisible = passiveIncomeWasVisible;
+      passiveIncomeWasVisible = !document.hidden;
+      accruePassiveIncome({
+        reason: document.hidden ? 'hidden' : 'visible',
+        active: wasVisible,
+        renderStore: !document.hidden,
+        forcePersist: true
+      });
+    });
+    window.addEventListener('pagehide', function () {
+      if (!els.app || els.app.hidden) return;
+      accruePassiveIncome({ reason: 'pagehide', active: passiveIncomeWasVisible, renderStore: false, forcePersist: true });
+    });
+    window.addEventListener('beforeunload', function () {
+      if (!els.app || els.app.hidden) return;
+      accruePassiveIncome({ reason: 'beforeunload', active: passiveIncomeWasVisible, renderStore: false, forcePersist: true });
+      if (passiveIncomeTimer) window.clearInterval(passiveIncomeTimer);
+      passiveIncomeTimer = null;
+    });
+  }
+
+  function boostPercent(multiplier) {
+    if (window.StudyEconomy && window.StudyEconomy.percentFromMultiplier) {
+      return window.StudyEconomy.percentFromMultiplier(multiplier);
+    }
+    return Math.round((Math.max(1, Number(multiplier) || 1) - 1) * 100);
   }
 
   function penPriceForSize(widthVw, heightVh) {
@@ -663,32 +854,116 @@
     if (els.bucksValue) els.bucksValue.textContent = formatCurrency(economy.bucks);
   }
 
-  function applyFocusMode(on) {
-    on = !!on;
-    document.documentElement.classList.toggle('focus-mode', on);
-    if (els.pigField) els.pigField.classList.toggle('focus-hidden', on);
+  function normalizeFocusMode(value) {
+    if (value === true) return 'sit';
+    if (value === 'sit' || value === 'sleep') return value;
+    return false;
+  }
+
+  function nextFocusMode(value) {
+    const mode = normalizeFocusMode(value);
+    if (!mode) return 'sit';
+    return mode === 'sit' ? 'sleep' : false;
+  }
+
+  function isSleepFocusActive() {
+    return document.documentElement.classList.contains('focus-mode-sleep') ||
+      document.documentElement.dataset.focusMode === 'sleep';
+  }
+
+  function syncSleepLockout(mode) {
+    const sleep = normalizeFocusMode(mode) === 'sleep';
+    const storeBtn = (els.tabBtns || []).find(function (btn) { return btn.dataset.tab === 'store'; });
+    if (storeBtn) {
+      storeBtn.disabled = sleep;
+      storeBtn.classList.toggle('sleep-locked', sleep);
+      storeBtn.setAttribute('aria-disabled', sleep ? 'true' : 'false');
+      storeBtn.setAttribute('title', sleep ? t('storeSleepLocked') : t('store'));
+      storeBtn.setAttribute('aria-label', sleep ? t('storeSleepLocked') : t('store'));
+    }
+    if (els.views && els.views.store) els.views.store.classList.toggle('sleep-locked', sleep);
+    if (els.pigField) els.pigField.classList.toggle('sleep-locked', sleep);
+  }
+
+  function syncFocusButton(mode) {
+    if (!els.focusBtn) return;
+    mode = normalizeFocusMode(mode);
+    const iconName = mode === 'sleep' ? 'moon' : (mode === 'sit' ? 'sit' : 'focus');
+    const label = mode === 'sleep' ? t('focusSleep') : (mode === 'sit' ? t('focusSit') : t('focus'));
+    els.focusBtn.dataset.focusState = mode || 'off';
+    els.focusBtn.classList.toggle('active', !!mode);
+    els.focusBtn.setAttribute('aria-pressed', mode ? 'true' : 'false');
+    els.focusBtn.setAttribute('title', label);
+    els.focusBtn.setAttribute('aria-label', label);
+    const icon = els.focusBtn.querySelector('[data-pixel-icon], .pixel-icon');
+    if (icon) {
+      icon.setAttribute('data-pixel-icon', iconName);
+      if (window.PixelSprites && window.PixelSprites.paintIcon) window.PixelSprites.paintIcon(icon, iconName);
+    }
+  }
+
+  function clearSleepFocusArtifacts() {
+    const root = document.documentElement;
+    root.classList.remove('focus-mode-sleep');
+    if (document.body) document.body.classList.remove('focus-mode-sleep');
+    if (!els.pigField) return;
+    els.pigField.classList.remove('focus-mode-sleep');
+    Array.prototype.forEach.call(els.pigField.querySelectorAll('.animal-scatter, .pen-fence, .trough-object, .flower-object'), function (el) {
+      el.style.removeProperty('filter');
+      el.style.removeProperty('opacity');
+      el.style.removeProperty('mix-blend-mode');
+    });
+  }
+
+  function applyFocusMode(mode) {
+    mode = normalizeFocusMode(mode);
+    const on = !!mode;
+    const root = document.documentElement;
+    root.classList.remove('focus-mode-sit', 'focus-mode-sleep');
+    delete root.dataset.focusMode;
+    if (document.body) document.body.classList.remove('focus-mode-sit', 'focus-mode-sleep');
+    if (els.pigField) els.pigField.classList.remove('focus-mode-sit', 'focus-mode-sleep');
+    root.classList.toggle('focus-mode', on);
+    if (mode) {
+      root.dataset.focusMode = mode;
+      root.classList.add('focus-mode-' + mode);
+      if (document.body) document.body.classList.add('focus-mode-' + mode);
+      if (els.pigField) els.pigField.classList.add('focus-mode-' + mode);
+    }
+    if (mode !== 'sleep') clearSleepFocusArtifacts();
+    if (els.pigField) els.pigField.classList.remove('focus-hidden');
     if (els.bucksDisplay) els.bucksDisplay.hidden = on;
-    if (els.focusBtn) {
-      els.focusBtn.classList.toggle('active', on);
-      els.focusBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    syncSleepLockout(mode);
+    if (mode === 'sleep') hideAnimalNameTip();
+    if (mode === 'sleep') {
+      const active = (els.tabBtns || []).find(function (btn) { return btn.classList.contains('active'); });
+      if (active && active.dataset.tab === 'store') switchTab('farm');
     }
-    if (els.settingsFocusToggle) {
-      els.settingsFocusToggle.setAttribute('aria-checked', on ? 'true' : 'false');
+    syncFocusButton(mode);
+    if (els.settingsFocusModeRow) {
+      Array.prototype.forEach.call(els.settingsFocusModeRow.querySelectorAll('[data-focus-choice]'), function (btn) {
+        const active = btn.getAttribute('data-focus-choice') === (mode || 'off');
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
     }
+    if (typeof setFarmFocusMode === 'function') setFarmFocusMode(mode || 'roam');
     if (on && typeof cancelPenPlacement === 'function') cancelPenPlacement();
+    if (on && typeof cancelStorePlacement === 'function') cancelStorePlacement();
     if (on && els.pigOverlay && !els.pigOverlay.hidden) dismissPigEncouragement();
   }
 
-  async function setFocusMode(on) {
+  async function setFocusMode(mode) {
     const s = await getSettings();
-    s.focusMode = !!on;
-    await saveSettings(s);
-    applyFocusMode(!!s.focusMode);
+    s.focusMode = normalizeFocusMode(mode);
+    await saveSettingsAndFlush(s);
+    applyFocusMode(s.focusMode);
   }
 
   function applySellMode(on) {
     if (!els.pigField) return;
     els.pigField.classList.toggle('sell-mode', !!on);
+    if (on) hideAnimalNameTip();
   }
 
   function isCompactLayout() {
@@ -698,7 +973,7 @@
   }
 
   function sellModeForTab(tab) {
-    return tab === 'store';
+    return tab === 'store' && !isSleepFocusActive();
   }
 
   function syncLayoutMode() {
@@ -727,9 +1002,12 @@
     window.addEventListener('resize', syncLayoutMode);
   }
 
-  async function persistEconomy() {
+  async function persistEconomy(opts) {
+    opts = opts || {};
     economy = await saveEconomy(economy);
     updateBucksDisplay();
+    passiveIncomeLastPersistAt = Date.now();
+    if (opts.flush !== false) await flushStorageNow('economy save');
   }
 
   async function refreshKnownTags() {
@@ -753,15 +1031,17 @@
     if (!vocab.some(function (t) { return t.toLowerCase() === value.toLowerCase(); })) {
       vocab.push(value);
       s.tagVocab = vocab;
-      await saveSettings(s);
+      await saveSettingsAndFlush(s);
     }
     await refreshKnownTags();
   }
 
   async function applyVocabAndRerender() {
+    const settings = await getSettings();
     applyI18n(document);
     refreshGreeting();
     updateBucksDisplay();
+    syncFocusButton(settings.focusMode);
     const active = (els.tabBtns || []).find(function (b) { return b.classList.contains('active'); });
     const tab = active ? active.dataset.tab : 'naists';
     if (tab === 'naists') await renderNaistsBrowser();
@@ -776,20 +1056,10 @@
     }
   }
 
-  // ---------------- appearance (background + foreground themes) ----------------
-  // Preset ids match the :root[data-bg]/[data-accent] token blocks in
-  // styles.css. `swatch` is the preview color in Settings; `swatchImage`
-  // (optional) shows a photo instead. Actual theming is done by the CSS
-  // token blocks (so light/dark pairs keep following the chosen appearance:
-  // System uses prefers-color-scheme; Light/Dark set data-theme and override).
-
-  const BACKGROUND_PRESETS = [
-    { id: 'paper', nameKey: 'bgPaper', swatch: '#faf6f7' },
-    { id: 'slate', nameKey: 'bgSlate', swatch: '#e6ebf0' },
-    { id: 'dusk', nameKey: 'bgDusk', swatch: '#ece5f6' },
-    { id: 'pig', nameKey: 'bgPig', swatch: '#fbe0ee' },
-    { id: 'grass', nameKey: 'bgGrass', swatch: '#bfe08e', swatchImage: 'resources/grass.jpg', locked: true }
-  ];
+  // ---------------- appearance (foreground theme + fixed pixel grass field) ----------------
+  // Light/dark/system still change foreground tokens. The page background is
+  // intentionally fixed to the pixel grass field so old saved custom images or
+  // cosmetic background ids cannot punch through the farm redesign.
 
   const ACCENT_PRESETS = [
     { id: 'raspberry', nameKey: 'accentBerry', swatch: '#d6337a' },
@@ -799,12 +1069,7 @@
     { id: 'grape', nameKey: 'accentGrape', swatch: '#8b46c8' }
   ];
 
-  // Applies the chosen background + accent + light/dark appearance to
-  // <html>/<body>. Preset tokens are driven by data-attributes (CSS does the
-  // light/dark work via prefers-color-scheme, or via data-theme when the user
-  // pinned Light/Dark in Settings); a custom uploaded image is applied as an
-  // inline, cover-fit (never stretched) background so its aspect ratio is
-  // preserved.
+  // Applies the chosen accent + light/dark appearance to <html>/<body>.
   function applyAppearance(settings) {
     const s = settings || {};
     const theme = (s.theme === 'light' || s.theme === 'dark') ? s.theme : 'system';
@@ -816,29 +1081,12 @@
 
     const accent = s.accentPreset || 'raspberry';
     document.documentElement.dataset.accent = accent;
-
-    let bg = s.backgroundPreset || 'paper';
-    const unlocked = (economy && economy.unlockedBackgrounds) || [];
-    const preset = BACKGROUND_PRESETS.find(function (p) { return p.id === bg; });
-    if (bg !== 'custom' && !preset) bg = 'paper';
-    if (preset && preset.locked && unlocked.indexOf(bg) === -1) {
-      bg = 'paper';
-    }
-    if (bg === 'custom' && s.backgroundImage) {
-      document.documentElement.dataset.bg = 'custom';
-      document.body.style.backgroundImage = 'url("' + s.backgroundImage + '")';
-      document.body.style.backgroundSize = 'cover';
-      document.body.style.backgroundPosition = 'center';
-      document.body.style.backgroundRepeat = 'no-repeat';
-      document.body.style.backgroundAttachment = 'fixed';
-    } else {
-      document.documentElement.dataset.bg = bg;
-      document.body.style.backgroundImage = '';
-      document.body.style.backgroundSize = '';
-      document.body.style.backgroundPosition = '';
-      document.body.style.backgroundRepeat = '';
-      document.body.style.backgroundAttachment = '';
-    }
+    document.documentElement.dataset.bg = 'grass';
+    document.body.style.backgroundImage = '';
+    document.body.style.backgroundSize = '';
+    document.body.style.backgroundPosition = '';
+    document.body.style.backgroundRepeat = '';
+    document.body.style.backgroundAttachment = '';
   }
 
   async function applyAppearanceFromSettings() {
@@ -866,6 +1114,7 @@
     if (name && name.trim()) {
       currentUsername = name.trim();
       await setUsername(currentUsername);
+      await flushStorageNow('nickname save');
       refreshGreeting();
       if (els.settingsNicknameValue) els.settingsNicknameValue.textContent = currentUsername;
     }
@@ -929,6 +1178,75 @@
     return new Promise(function (resolve) { _textPromptResolve = resolve; });
   }
 
+  // ---------------- generic pixel modal (alert/confirm replacement) ----------------
+
+  var _pixelModalResolve = null;
+
+  function bindPixelModal() {
+    if (!els.pixelModalOverlay || els.pixelModalOverlay.dataset.bound) return;
+    els.pixelModalOverlay.dataset.bound = '1';
+    els.pixelModalConfirm.addEventListener('click', function () { _closePixelModal(true); });
+    els.pixelModalCancel.addEventListener('click', function () { _closePixelModal(false); });
+    els.pixelModalOverlay.addEventListener('mousedown', function (e) {
+      if (e.target === els.pixelModalOverlay) _closePixelModal(false);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (!els.pixelModalOverlay || els.pixelModalOverlay.hidden) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        _closePixelModal(false);
+      } else if (e.key === 'Enter' && document.activeElement !== els.pixelModalCancel) {
+        e.preventDefault();
+        _closePixelModal(true);
+      }
+    });
+  }
+
+  function _closePixelModal(result) {
+    if (!els.pixelModalOverlay) return;
+    els.pixelModalOverlay.hidden = true;
+    els.pixelModalOverlay.dataset.kind = '';
+    els.pixelModalConfirm.className = 'primary-btn';
+    const resolve = _pixelModalResolve;
+    _pixelModalResolve = null;
+    if (resolve) resolve(!!result);
+  }
+
+  function openPixelModal(opts) {
+    opts = opts || {};
+    bindPixelModal();
+    if (!els.pixelModalOverlay) return Promise.resolve(true);
+    if (_pixelModalResolve) _closePixelModal(false);
+    const showCancel = !!opts.showCancel;
+    els.pixelModalOverlay.dataset.kind = showCancel ? 'confirm' : 'alert';
+    els.pixelModalTitle.textContent = opts.title || (showCancel ? t('confirm') : t('notice'));
+    els.pixelModalMessage.textContent = opts.message || '';
+    els.pixelModalCancel.hidden = !showCancel;
+    els.pixelModalCancel.textContent = opts.cancelText || t('cancel');
+    els.pixelModalConfirm.textContent = opts.confirmText || t('ok');
+    els.pixelModalConfirm.className = opts.danger ? 'secondary-btn danger-btn' : 'primary-btn';
+    els.pixelModalOverlay.hidden = false;
+    setTimeout(function () { els.pixelModalConfirm.focus(); }, 30);
+    return new Promise(function (resolve) { _pixelModalResolve = resolve; });
+  }
+
+  function openPixelConfirm(message, opts) {
+    opts = opts || {};
+    return openPixelModal(Object.assign({}, opts, {
+      message: message,
+      showCancel: true,
+      confirmText: opts.confirmText || t('delete')
+    }));
+  }
+
+  function openPixelAlert(message, opts) {
+    opts = opts || {};
+    return openPixelModal(Object.assign({}, opts, {
+      message: message,
+      showCancel: false
+    }));
+  }
+
   // ---------------- settings overlay ----------------
 
   function bindSettingsOverlay() {
@@ -939,7 +1257,8 @@
       els.focusBtn.dataset.bound = '1';
       els.focusBtn.addEventListener('click', async function () {
         const s = await getSettings();
-        await setFocusMode(!s.focusMode);
+        const domMode = normalizeFocusMode(document.documentElement.dataset.focusMode);
+        await setFocusMode(nextFocusMode(domMode || s.focusMode));
         await renderSettings();
       });
     }
@@ -962,36 +1281,23 @@
       });
     }
 
-    if (els.settingsBgImageBtn && els.settingsBgImageInput) {
-      els.settingsBgImageBtn.addEventListener('click', function () { els.settingsBgImageInput.click(); });
-      els.settingsBgImageInput.addEventListener('change', onCustomBgImageChosen);
-    }
-    if (els.settingsBgImageClear) {
-      els.settingsBgImageClear.addEventListener('click', async function () {
-        const s = await getSettings();
-        s.backgroundPreset = 'paper';
-        s.backgroundImage = null;
-        await saveSettings(s);
-        applyAppearance(s);
-        await renderSettings();
-      });
-    }
-
     if (els.settingsVocabToggle) {
       els.settingsVocabToggle.addEventListener('click', async function () {
         const s = await getSettings();
         s.funSpellings = !s.funSpellings;
-        await saveSettings(s);
+        await saveSettingsAndFlush(s);
         setFunSpellings(!!s.funSpellings);
         await applyVocabAndRerender();
         await renderSettings();
       });
     }
 
-    if (els.settingsFocusToggle) {
-      els.settingsFocusToggle.addEventListener('click', async function () {
-        const s = await getSettings();
-        await setFocusMode(!s.focusMode);
+    if (els.settingsFocusModeRow) {
+      els.settingsFocusModeRow.addEventListener('click', async function (e) {
+        const btn = e.target.closest('[data-focus-choice]');
+        if (!btn) return;
+        const choice = btn.getAttribute('data-focus-choice');
+        await setFocusMode(choice === 'off' ? false : choice);
         await renderSettings();
       });
     }
@@ -1000,7 +1306,7 @@
       els.settingsEncouragementToggle.addEventListener('click', async function () {
         const s = await getSettings();
         s.encouragement = !s.encouragement;
-        await saveSettings(s);
+        await saveSettingsAndFlush(s);
         await renderSettings();
       });
     }
@@ -1013,7 +1319,7 @@
         if (choice !== 'light' && choice !== 'dark' && choice !== 'system') return;
         const s = await getSettings();
         s.theme = choice;
-        await saveSettings(s);
+        await saveSettingsAndFlush(s);
         applyAppearance(s);
         await renderSettings();
       });
@@ -1053,33 +1359,20 @@
     _renderSwatches(els.settingsAccentSwatches, ACCENT_PRESETS, settings.accentPreset || 'raspberry', async function (id) {
       const s = await getSettings();
       s.accentPreset = id;
-      await saveSettings(s);
+      await saveSettingsAndFlush(s);
       applyAppearance(s);
       await renderSettings();
     });
 
-    const unlocked = economy.unlockedBackgrounds || [];
-    const visibleBgs = BACKGROUND_PRESETS.filter(function (p) {
-      return !p.locked || unlocked.indexOf(p.id) !== -1;
-    });
-    const activeBg = (settings.backgroundPreset === 'custom') ? 'custom' : (settings.backgroundPreset || 'paper');
-    _renderSwatches(els.settingsBgSwatches, visibleBgs, activeBg, async function (id) {
-      const s = await getSettings();
-      s.backgroundPreset = id;
-      await saveSettings(s);
-      applyAppearance(s);
-      await renderSettings();
-    });
-
-    const hasCustom = settings.backgroundPreset === 'custom' && !!settings.backgroundImage;
-    if (els.settingsBgImageClear) els.settingsBgImageClear.hidden = !hasCustom;
-    if (els.settingsBgStatus) {
-      els.settingsBgStatus.textContent = hasCustom ? t('customBgOn') : '';
-      els.settingsBgStatus.classList.remove('error');
-    }
-
+    const focusMode = normalizeFocusMode(settings.focusMode);
     _setToggle(els.settingsVocabToggle, !!settings.funSpellings);
-    _setToggle(els.settingsFocusToggle, !!settings.focusMode);
+    if (els.settingsFocusModeRow) {
+      Array.prototype.forEach.call(els.settingsFocusModeRow.querySelectorAll('[data-focus-choice]'), function (btn) {
+        const on = btn.getAttribute('data-focus-choice') === (focusMode || 'off');
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
     _setToggle(els.settingsEncouragementToggle, !!settings.encouragement);
   }
 
@@ -1096,15 +1389,7 @@
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'swatch' + (preset.id === activeId ? ' active' : '');
-      if (preset.swatchImage) {
-        btn.style.backgroundColor = preset.swatch;
-        btn.style.backgroundImage = 'url("' + preset.swatchImage + '")';
-        btn.style.backgroundSize = 'cover';
-        btn.style.backgroundPosition = 'center';
-        btn.style.backgroundRepeat = 'no-repeat';
-      } else {
-        btn.style.background = preset.swatch;
-      }
+      btn.style.background = preset.swatch;
       const presetName = preset.nameKey ? t(preset.nameKey) : (preset.name || preset.id);
       btn.title = presetName;
       btn.setAttribute('aria-label', presetName);
@@ -1117,36 +1402,186 @@
     });
   }
 
-  async function onCustomBgImageChosen(e) {
-    const file = e.target.files[0];
-    e.target.value = '';
-    if (!file) return;
-    if (els.settingsBgStatus) {
-      els.settingsBgStatus.classList.remove('error');
-      els.settingsBgStatus.textContent = t('processingImage');
+  // ---------------- sprite lab (developer-only pixel frame sandbox) ----------------
+
+  const SPRITE_LAB_W = 18;
+  const SPRITE_LAB_H = 16;
+  const SPRITE_LAB_COLORS = [
+    '#2b1f18', '#fff3c8', '#f6c545', '#78b94f', '#3f8a3f',
+    '#f092a3', '#cf5d71', '#d29a4c', '#8a532e', '#4b72c9',
+    '#58a9cf', '#c9483f', '#f0a329', '#f8edd4', '#30363f'
+  ];
+  let spriteLabCells = {};
+  let spriteLabColor = SPRITE_LAB_COLORS[0];
+  let spriteLabTimer = null;
+
+  function bindSpriteLab() {
+    if (!els.spriteLabOverlay || els.spriteLabOverlay.dataset.bound) return;
+    els.spriteLabOverlay.dataset.bound = '1';
+    if (els.spriteLabOpenBtn) els.spriteLabOpenBtn.addEventListener('click', openSpriteLab);
+    if (els.spriteLabCloseBtn) els.spriteLabCloseBtn.addEventListener('click', closeSpriteLab);
+    if (els.spriteLabResetBtn) els.spriteLabResetBtn.addEventListener('click', resetSpriteLabFromCatalog);
+    if (els.spriteLabPlayBtn) els.spriteLabPlayBtn.addEventListener('click', toggleSpriteLabPlayback);
+    if (els.spriteLabSpecies) els.spriteLabSpecies.addEventListener('change', resetSpriteLabFromCatalog);
+    if (els.spriteLabState) els.spriteLabState.addEventListener('change', resetSpriteLabFromCatalog);
+    if (els.spriteLabFrame) els.spriteLabFrame.addEventListener('input', resetSpriteLabFromCatalog);
+    if (els.spriteLabGrid) {
+      els.spriteLabGrid.addEventListener('click', function (e) {
+        const cell = e.target.closest('[data-x][data-y]');
+        if (!cell) return;
+        stopSpriteLabPlayback();
+        spriteLabCells[cell.dataset.x + ':' + cell.dataset.y] = spriteLabColor;
+        renderSpriteLab();
+      });
+      els.spriteLabGrid.addEventListener('contextmenu', function (e) {
+        const cell = e.target.closest('[data-x][data-y]');
+        if (!cell) return;
+        e.preventDefault();
+        stopSpriteLabPlayback();
+        delete spriteLabCells[cell.dataset.x + ':' + cell.dataset.y];
+        renderSpriteLab();
+      });
     }
-    try {
-      // Compress hard: page backgrounds don't need card-level fidelity, and a
-      // big data URI can blow the localStorage/Firestore-doc quota.
-      const dataUri = await fileToCompressedDataUri(file, 1280, 0.68);
-      const s = await getSettings();
-      s.backgroundPreset = 'custom';
-      s.backgroundImage = dataUri;
-      try {
-        await saveSettings(s);
-      } catch (quotaErr) {
-        // Retry once at a smaller size before giving up.
-        const smaller = await fileToCompressedDataUri(file, 800, 0.6);
-        s.backgroundImage = smaller;
-        await saveSettings(s);
-      }
-      applyAppearance(s);
-      await renderSettings();
-    } catch (err) {
-      console.error('Custom background failed:', err);
-      if (els.settingsBgStatus) {
-        els.settingsBgStatus.classList.add('error');
-        els.settingsBgStatus.textContent = t('customBgFail');
+    if (els.spriteLabOverlay) {
+      els.spriteLabOverlay.addEventListener('mousedown', function (e) {
+        if (e.target === els.spriteLabOverlay) closeSpriteLab();
+      });
+    }
+  }
+
+  function openSpriteLab() {
+    fillSpriteLabSelects();
+    resetSpriteLabFromCatalog();
+    els.spriteLabOverlay.hidden = false;
+  }
+
+  function closeSpriteLab() {
+    stopSpriteLabPlayback();
+    if (els.spriteLabOverlay) els.spriteLabOverlay.hidden = true;
+  }
+
+  function fillSpriteLabSelects() {
+    if (!window.PixelSprites) return;
+    if (els.spriteLabSpecies && !els.spriteLabSpecies.options.length) {
+      (window.PixelSprites.species || []).forEach(function (species) {
+        const opt = document.createElement('option');
+        opt.value = species;
+        opt.textContent = speciesLabel(species);
+        els.spriteLabSpecies.appendChild(opt);
+      });
+    }
+    if (els.spriteLabState && !els.spriteLabState.options.length) {
+      (window.PixelSprites.states || []).forEach(function (state) {
+        const opt = document.createElement('option');
+        opt.value = state;
+        opt.textContent = state;
+        els.spriteLabState.appendChild(opt);
+      });
+    }
+    if (els.spriteLabPalette && !els.spriteLabPalette.children.length) {
+      SPRITE_LAB_COLORS.forEach(function (color) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'swatch sprite-lab-swatch';
+        btn.style.background = color;
+        btn.setAttribute('aria-label', color);
+        btn.addEventListener('click', function () {
+          spriteLabColor = color;
+          Array.prototype.forEach.call(els.spriteLabPalette.querySelectorAll('.sprite-lab-swatch'), function (b) {
+            b.classList.toggle('active', b === btn);
+          });
+        });
+        if (color === spriteLabColor) btn.classList.add('active');
+        els.spriteLabPalette.appendChild(btn);
+      });
+    }
+  }
+
+  function resetSpriteLabFromCatalog() {
+    stopSpriteLabPlayback();
+    if (!window.PixelSprites || !window.PixelSprites.frame) return;
+    const species = els.spriteLabSpecies.value || 'pigs';
+    const state = els.spriteLabState.value || 'stand';
+    const frame = Number(els.spriteLabFrame.value) || 0;
+    spriteLabCells = {};
+    window.PixelSprites.frame(species, { state: state, frame: frame }).forEach(function (cell) {
+      spriteLabCells[cell.x + ':' + cell.y] = cell.color;
+    });
+    renderSpriteLab();
+  }
+
+  function toggleSpriteLabPlayback() {
+    if (spriteLabTimer) {
+      stopSpriteLabPlayback();
+      return;
+    }
+    if (!els.spriteLabFrame) return;
+    els.spriteLabPlayBtn.textContent = 'Stop';
+    spriteLabTimer = setInterval(function () {
+      els.spriteLabFrame.value = String((Number(els.spriteLabFrame.value) + 1) % 4);
+      if (!window.PixelSprites || !window.PixelSprites.frame) return;
+      const species = els.spriteLabSpecies.value || 'pigs';
+      const state = els.spriteLabState.value || 'walk';
+      spriteLabCells = {};
+      window.PixelSprites.frame(species, { state: state, frame: Number(els.spriteLabFrame.value) }).forEach(function (cell) {
+        spriteLabCells[cell.x + ':' + cell.y] = cell.color;
+      });
+      renderSpriteLab();
+    }, 260);
+  }
+
+  function stopSpriteLabPlayback() {
+    if (spriteLabTimer) clearInterval(spriteLabTimer);
+    spriteLabTimer = null;
+    if (els.spriteLabPlayBtn) els.spriteLabPlayBtn.textContent = 'Play';
+  }
+
+  function renderSpriteLab() {
+    paintSpriteLabPreview();
+    renderSpriteLabGrid();
+    if (els.spriteLabOutput) {
+      const cells = Object.keys(spriteLabCells).sort().map(function (key) {
+        const parts = key.split(':');
+        return { x: Number(parts[0]), y: Number(parts[1]), color: spriteLabCells[key] };
+      });
+      els.spriteLabOutput.value = JSON.stringify({ width: SPRITE_LAB_W, height: SPRITE_LAB_H, cells: cells }, null, 2);
+    }
+  }
+
+  function paintSpriteLabPreview() {
+    if (!els.spriteLabPreview) return;
+    const shell = document.createElement('span');
+    shell.className = 'pixel-sprite sprite-lab-preview-sprite';
+    shell.style.setProperty('--sprite-w', SPRITE_LAB_W);
+    shell.style.setProperty('--sprite-h', SPRITE_LAB_H);
+    const inner = document.createElement('span');
+    inner.className = 'pixel-sprite-inner';
+    Object.keys(spriteLabCells).forEach(function (key) {
+      const parts = key.split(':');
+      const px = document.createElement('span');
+      px.className = 'pixel-cell';
+      px.style.gridColumn = String(Number(parts[0]) + 1);
+      px.style.gridRow = String(Number(parts[1]) + 1);
+      px.style.backgroundColor = spriteLabCells[key];
+      inner.appendChild(px);
+    });
+    shell.appendChild(inner);
+    els.spriteLabPreview.textContent = '';
+    els.spriteLabPreview.appendChild(shell);
+  }
+
+  function renderSpriteLabGrid() {
+    if (!els.spriteLabGrid) return;
+    els.spriteLabGrid.innerHTML = '';
+    for (let y = 0; y < SPRITE_LAB_H; y++) {
+      for (let x = 0; x < SPRITE_LAB_W; x++) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.dataset.x = String(x);
+        btn.dataset.y = String(y);
+        btn.style.backgroundColor = spriteLabCells[x + ':' + y] || 'transparent';
+        btn.setAttribute('aria-label', 'pixel ' + x + ', ' + y);
+        els.spriteLabGrid.appendChild(btn);
       }
     }
   }
@@ -1157,7 +1592,10 @@
     if (!els.app || els.app.dataset.tabsBound) return;
     els.app.dataset.tabsBound = '1';
     (els.tabBtns || []).forEach(function (btn) {
-      btn.addEventListener('click', function () { switchTab(btn.dataset.tab); });
+      btn.addEventListener('click', function () {
+        if (btn.dataset.tab === 'store' && isSleepFocusActive()) return;
+        switchTab(btn.dataset.tab);
+      });
     });
   }
 
@@ -1168,6 +1606,12 @@
   // opts, so it always falls through to those defaults.
   function switchTab(tab, opts) {
     opts = opts || {};
+    if (tab === 'store' && isSleepFocusActive()) {
+      syncSleepLockout('sleep');
+      const active = (els.tabBtns || []).find(function (btn) { return btn.classList.contains('active'); });
+      if (active && active.dataset.tab === 'store') switchTab('farm');
+      return;
+    }
     if (tab === 'farm' && !isCompactLayout()) tab = 'naists';
     (els.tabBtns || []).forEach(function (btn) {
       btn.classList.toggle('active', btn.dataset.tab === tab);
@@ -1206,6 +1650,9 @@
 
   // ---------------- naist helpers (shared: Naists browser + Edit Daeck breadcrumb) ----------------
 
+  const NEST_PATH_SEPARATOR = ' > ';
+  const NEST_BREADCRUMB_SEPARATOR = '>';
+
   function naistById(naists, id) {
     if (!id) return null;
     return naists.find(function (n) { return n.id === id; }) || null;
@@ -1223,13 +1670,13 @@
   }
 
   function naistPathLabel(naists, naistId) {
-    return naistPath(naists, naistId).map(function (n) { return n.name; }).join(' / ');
+    return naistPath(naists, naistId).map(function (n) { return n.name; }).join(NEST_PATH_SEPARATOR);
   }
 
   function deckDisplayLabel(deck, naists) {
     const pathLabel = naistPathLabel(naists, deck.naistId);
     const name = displayDeckName(deck);
-    return pathLabel ? pathLabel + ' / ' + name : name;
+    return pathLabel ? pathLabel + NEST_PATH_SEPARATOR + name : name;
   }
 
   // Every naist nested anywhere inside `rootId` (not including itself), at
@@ -1282,6 +1729,11 @@
   }
 
   function buildNaistIcon() {
+    if (window.PixelSprites && window.PixelSprites.renderIcon) {
+      const icon = window.PixelSprites.renderIcon('nests');
+      icon.classList.add('naist-icon');
+      return icon;
+    }
     const svg = _svgEl('svg', { viewBox: '0 0 24 24', class: 'naist-icon', 'aria-hidden': 'true' });
     svg.appendChild(_svgEl('path', { d: 'M3 13c0 3.5 4 6 9 6s9-2.5 9-6' }));
     svg.appendChild(_svgEl('path', { d: 'M3 13c1.5-1.3 3-1.3 4.5 0M16.5 13c1.5-1.3 3-1.3 4.5 0' }));
@@ -1310,9 +1762,13 @@
     btn.className = 'icon-action-btn delete-btn';
     btn.title = t('delete');
     btn.setAttribute('aria-label', t('delete'));
-    const svg = _svgEl('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' });
-    svg.appendChild(_svgEl('path', { d: _TRASH_PATH }));
-    btn.appendChild(svg);
+    if (window.PixelSprites && window.PixelSprites.renderIcon) {
+      btn.appendChild(window.PixelSprites.renderIcon('trash'));
+    } else {
+      const svg = _svgEl('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' });
+      svg.appendChild(_svgEl('path', { d: _TRASH_PATH }));
+      btn.appendChild(svg);
+    }
     btn.addEventListener('click', function (e) {
       e.stopPropagation();
       onClick(e);
@@ -1351,7 +1807,7 @@
       if (!isLast) {
         const sep = document.createElement('span');
         sep.className = 'breadcrumb-sep';
-        sep.textContent = '/';
+        sep.textContent = NEST_BREADCRUMB_SEPARATOR;
         containerEl.appendChild(sep);
       }
     });
@@ -1383,6 +1839,7 @@
         });
         if (!name || !name.trim()) return;
         await addNaist(name.trim(), browseNaistId);
+        await flushStorageNow('nest create');
         await renderNaistsBrowser();
       });
     }
@@ -1400,13 +1857,17 @@
         if (!file) return;
         const baseName = file.name.replace(/\.[^.]+$/, '').trim() || t('importedDeck');
         await withLoading(async function () {
+          let changed = false;
           try {
             const deck = await addDeck(baseName, browseNaistId);
+            changed = true;
             const parsed = await importAnkiFile(file);
             await addCards(parsed, deck.id);
+            await flushStorageNow('deck import');
             switchTab('edit', { deckId: deck.id });
           } catch (err) {
-            alert(err && err.message ? err.message : t('importFailed'));
+            if (changed) await flushStorageNow('partial deck import');
+            await openPixelAlert(err && err.message ? err.message : t('importFailed'), { title: t('importFailed') });
           }
         });
       });
@@ -1565,7 +2026,7 @@
     handle.className = 'drag-handle';
     handle.title = t('dragToMove');
     handle.setAttribute('aria-hidden', 'true');
-    handle.innerHTML = '<svg viewBox="0 0 16 16"><circle cx="5" cy="4" r="1.35"/><circle cx="5" cy="8" r="1.35"/><circle cx="5" cy="12" r="1.35"/><circle cx="11" cy="4" r="1.35"/><circle cx="11" cy="8" r="1.35"/><circle cx="11" cy="12" r="1.35"/></svg>';
+    handle.innerHTML = '<span class="pixel-grip-dot"></span><span class="pixel-grip-dot"></span><span class="pixel-grip-dot"></span><span class="pixel-grip-dot"></span><span class="pixel-grip-dot"></span><span class="pixel-grip-dot"></span>';
     handle.addEventListener('pointerdown', function (e) {
       beginPointerDrag(e, kind, id, label);
     });
@@ -1605,6 +2066,7 @@
     }
 
     if (target) expandedNaistIds.add(target);
+    await flushStorageNow('nest move');
     await renderNaistsBrowser();
   }
 
@@ -1800,7 +2262,7 @@
     chevron.className = 'naist-chevron' + (expanded ? ' expanded' : '') + (hasChildren ? '' : ' empty');
     chevron.disabled = !hasChildren;
     chevron.setAttribute('aria-label', expanded ? t('collapseNest') : t('expandNest'));
-    chevron.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+    chevron.innerHTML = '<span class="pixel-chevron-arrow" aria-hidden="true"></span>';
     chevron.addEventListener('click', function (e) {
       e.stopPropagation();
       if (expandedNaistIds.has(naist.id)) expandedNaistIds.delete(naist.id);
@@ -1831,6 +2293,7 @@
       });
       if (!newName || !newName.trim()) return;
       await renameNaist(naist.id, newName.trim());
+      await flushStorageNow('nest rename');
       await renderNaistsBrowser();
     });
     const meta = document.createElement('span');
@@ -1854,8 +2317,9 @@
     actions.className = 'browse-row-actions';
 
     const deleteBtn = buildDeleteButton(async function () {
-      if (!confirm(t('deleteNestConfirm', { name: naist.name }))) return;
+      if (!await openPixelConfirm(t('deleteNestConfirm', { name: naist.name }), { title: t('delete'), danger: true })) return;
       await deleteNaist(naist.id);
+      await flushStorageNow('nest delete');
       await renderNaistsBrowser();
     });
 
@@ -1946,8 +2410,9 @@
 
     if (deck.id !== DEFAULT_DECK_ID) {
       const deleteBtn = buildDeleteButton(async function () {
-        if (!confirm(t('deleteDeckConfirm', { name: displayDeckName(deck) }))) return;
+        if (!await openPixelConfirm(t('deleteDeckConfirm', { name: displayDeckName(deck) }), { title: t('delete'), danger: true })) return;
         await deleteDeck(deck.id);
+        await flushStorageNow('deck delete');
         if (editDeckId === deck.id) editDeckId = null;
         await renderNaistsBrowser();
       });
@@ -1977,6 +2442,7 @@
       if (!name) { els.newDeckNameInput.focus(); return; }
       await withLoading(async function () {
         const deck = await addDeck(name, pendingNewDeckNaistId);
+        await flushStorageNow('deck create');
         closeNewDeckOverlay();
         switchTab('edit', { deckId: deck.id });
       });
@@ -1994,13 +2460,17 @@
       const name = els.newDeckNameInput.value.trim();
       if (!name) { els.newDeckNameInput.focus(); return; }
       await withLoading(async function () {
+        let changed = false;
         try {
           const deck = await addDeck(name, pendingNewDeckNaistId);
+          changed = true;
           const parsed = await importAnkiFile(file);
           await addCards(parsed, deck.id);
+          await flushStorageNow('deck import');
           closeNewDeckOverlay();
           switchTab('edit', { deckId: deck.id });
         } catch (err) {
+          if (changed) await flushStorageNow('partial deck import');
           els.newDeckStatus.textContent = err.message || t('importFailed');
         }
       });
@@ -2084,6 +2554,7 @@
     els.cramModeBadge.hidden = true;
     els.studySession.hidden = true;
     hideSessionProgressChip();
+    flushStorageNow('session end');
   }
 
   async function startDeckSession(deckId, deckName, opts) {
@@ -2099,7 +2570,10 @@
     els.studyNoDeckState.hidden = true;
     els.studySession.hidden = false;
 
-    if (deckId) await setLastStudiedDeckId(deckId);
+    if (deckId) {
+      await setLastStudiedDeckId(deckId);
+      await flushStorageNow('session start');
+    }
 
     await withLoading(async function () {
       const cards = await getCards();
@@ -2321,6 +2795,7 @@
       };
       if (rating === 'again') session.queue.splice(reinsertAt, 0, updated);
 
+      await accruePassiveIncome({ reason: 'before rating', renderStore: false });
       const earned = bucksPerRating(economy.animals);
       economy.bucks = Math.round((economy.bucks + earned) * 100) / 100;
       session.lastAction.bucksGranted = earned;
@@ -2330,17 +2805,15 @@
     session.reviewedCount++;
     els.undoRatingBtn.hidden = false;
 
-    if (!session.cram) {
-      const settings = await getSettings();
-      const focusOn = document.documentElement.classList.contains('focus-mode');
-      if (settings.encouragement && !focusOn) {
-        session.cardsSinceLastPig = (session.cardsSinceLastPig || 0) + 1;
-        if (session.cardsSinceLastPig >= ENCOURAGEMENT_INTERVAL) {
-          session.cardsSinceLastPig = 0;
-          if (session.lastAction) session.lastAction.encouragementFired = true;
-          await showPigEncouragement();
-          return;
-        }
+    const settings = await getSettings();
+    const sleepFocus = document.documentElement.dataset.focusMode === 'sleep';
+    if (settings.encouragement && !sleepFocus) {
+      session.cardsSinceLastPig = (session.cardsSinceLastPig || 0) + 1;
+      if (session.cardsSinceLastPig >= ENCOURAGEMENT_INTERVAL) {
+        session.cardsSinceLastPig = 0;
+        if (session.lastAction) session.lastAction.encouragementFired = true;
+        await showPigEncouragement();
+        return;
       }
     }
     showNextCard();
@@ -2371,14 +2844,13 @@
         economy.bucks = Math.max(0, Math.round((economy.bucks - action.bucksGranted) * 100) / 100);
         await persistEconomy();
       }
+      await flushStorageNow('rating undo');
     }
 
     session.reviewedCount = Math.max(0, session.reviewedCount - 1);
-    if (!action.cram) {
-      session.cardsSinceLastPig = action.encouragementFired
-        ? ENCOURAGEMENT_INTERVAL - 1
-        : Math.max(0, (session.cardsSinceLastPig || 0) - 1);
-    }
+    session.cardsSinceLastPig = action.encouragementFired
+      ? ENCOURAGEMENT_INTERVAL - 1
+      : Math.max(0, (session.cardsSinceLastPig || 0) - 1);
     session.currentCard = action.originalCard;
     session.lastAction = null;
     els.undoRatingBtn.hidden = true;
@@ -2401,6 +2873,7 @@
 
   let _pigOverlayArmed = false;
   let _pigOverlayTimer = null;
+  let _pigOverlayStop = null;
 
   function bindPigOverlay() {
     if (!els.pigOverlay || els.pigOverlay.dataset.bound) return;
@@ -2422,6 +2895,7 @@
     if (!_pigOverlayArmed) return;
     _pigOverlayArmed = false;
     if (_pigOverlayTimer) { clearTimeout(_pigOverlayTimer); _pigOverlayTimer = null; }
+    if (_pigOverlayStop) { _pigOverlayStop(); _pigOverlayStop = null; }
     document.removeEventListener('mousedown', _onPigOverlayMouseDown, true);
     if (els.pigOverlay) {
       els.pigOverlay.hidden = true;
@@ -2430,17 +2904,67 @@
     showNextCard();
   }
 
+  function visibleEncouragementAnimals() {
+    const out = [];
+    if (!els.pigField) return out;
+    Array.prototype.forEach.call(els.pigField.querySelectorAll('.animal-scatter'), function (node) {
+      const rect = node.getBoundingClientRect();
+      const style = window.getComputedStyle ? window.getComputedStyle(node) : null;
+      if (!rect.width || !rect.height) return;
+      if (style && (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0)) return;
+      out.push({
+        species: node.dataset.species || 'pigs',
+        variant: Number(node.dataset.variant || node.dataset.index || 0),
+        name: animalNameForNode(node)
+      });
+    });
+    return out;
+  }
+
+  function randomEncouragementAnimal() {
+    const visible = visibleEncouragementAnimals();
+    if (visible.length) return visible[Math.floor(Math.random() * visible.length)];
+    const owned = [];
+    ANIMAL_SHOP.forEach(function (spec) {
+      const count = (economy.animals && economy.animals[spec.id]) || 0;
+      for (let i = 1; i <= count; i++) {
+        owned.push({
+          species: spec.id,
+          variant: i,
+          name: speciesLabel(spec.id) + ' ' + i
+        });
+      }
+    });
+    return owned.length ? owned[Math.floor(Math.random() * owned.length)] : { species: 'pigs', variant: 0, name: speciesLabel('pigs') };
+  }
+
+  function randomEncouragementState() {
+    const states = ['stand', 'walk', 'sit', 'sleep'];
+    return states[Math.floor(Math.random() * states.length)];
+  }
+
   async function showPigEncouragement() {
     if (!els.pigOverlay) {
       showNextCard();
       return;
     }
-    try {
-      if (els.pigOverlayImg) els.pigOverlayImg.src = await getRandomPhotoPath();
-    } catch (err) {
-      if (els.pigOverlayImg) els.pigOverlayImg.removeAttribute('src');
+    if (_pigOverlayStop) { _pigOverlayStop(); _pigOverlayStop = null; }
+    if (els.pigOverlayImg) {
+      const animal = randomEncouragementAnimal();
+      const state = randomEncouragementState();
+      els.pigOverlayImg.textContent = '';
+      els.pigOverlayImg.classList.remove('encouragement-walk', 'encouragement-state-stand', 'encouragement-state-walk', 'encouragement-state-sit', 'encouragement-state-sleep');
+      els.pigOverlayImg.classList.add('encouragement-state-' + state);
+      if (state === 'walk') els.pigOverlayImg.classList.add('encouragement-walk');
+      els.pigOverlayImg.setAttribute('aria-label', animal.name);
+      if (window.PixelSprites && window.PixelSprites.paintAnimal) {
+        window.PixelSprites.paintAnimal(els.pigOverlayImg, animal.species, {
+          state: state,
+          variant: animal.variant
+        });
+        if (state === 'walk') _pigOverlayStop = window.PixelSprites.animate(els.pigOverlayImg, 'walk', 4);
+      }
     }
-    if (els.pigOverlayImg) els.pigOverlayImg.alt = t('pigs');
     if (els.pigOverlayText) els.pigOverlayText.textContent = getRandomEncouragement(currentUsername);
     if (els.pigOverlayContinue) els.pigOverlayContinue.textContent = t('studyingContinue');
     els.pigOverlay.hidden = false;
@@ -2605,6 +3129,7 @@
       });
       if (!newName || !newName.trim()) return;
       await renameDeck(editDeckId, newName.trim());
+      await flushStorageNow('deck rename');
       await renderEditDeck();
     });
 
@@ -2613,8 +3138,9 @@
       const decks = await getDecks();
       const deck = decks.find(function (d) { return d.id === editDeckId; });
       if (!deck) return;
-      if (!confirm(t('deleteDeckConfirm', { name: displayDeckName(deck) }))) return;
+      if (!await openPixelConfirm(t('deleteDeckConfirm', { name: displayDeckName(deck) }), { title: t('delete'), danger: true })) return;
       await deleteDeck(deck.id);
+      await flushStorageNow('deck delete');
       editDeckId = null;
       switchTab('naists');
     });
@@ -2653,6 +3179,7 @@
     }
     if (!editDeckId) return;
     await addCard(front, back, editDeckId, addFrontImageDataUri, addBackImageDataUri, addFormTags.slice());
+    await flushStorageNow('card add');
     els.addFront.value = '';
     els.addBack.value = '';
     addFormTags = [];
@@ -2782,8 +3309,9 @@
       const occlusionActions = document.createElement('div');
       occlusionActions.className = 'card-row-actions';
       const occlusionDeleteBtn = buildDeleteButton(async function () {
-        if (!confirm(t('deleteOcclusionConfirm'))) return;
+        if (!await openPixelConfirm(t('deleteOcclusionConfirm'), { title: t('delete'), danger: true })) return;
         await deleteCard(card.id);
+        await flushStorageNow('card delete');
         if (opts.onChanged) opts.onChanged();
       });
       occlusionActions.appendChild(occlusionDeleteBtn);
@@ -2829,8 +3357,10 @@
     editBtn.addEventListener('click', function () { enterCardEditMode(row, card, opts.onChanged); });
 
     const deleteBtn = buildDeleteButton(async function () {
-      if (!confirm(t('deleteCardConfirm') + '\n\n"' + truncate(card.front, 60) + '"')) return;
+      const message = t('deleteCardConfirm') + '\n\n"' + truncate(card.front, 60) + '"';
+      if (!await openPixelConfirm(message, { title: t('delete'), danger: true })) return;
       await deleteCard(card.id);
+      await flushStorageNow('card delete');
       if (opts.onChanged) opts.onChanged();
     });
 
@@ -2907,6 +3437,7 @@
       const back = backTa.value.trim();
       if (!front || !back) return;
       await updateCard(card.id, { front: front, back: back, frontImage: frontImage, backImage: backImage, tags: tags });
+      await flushStorageNow('card edit');
       await refreshKnownTags();
       if (onChanged) onChanged();
     });
@@ -3055,34 +3586,245 @@
     return t(id);
   }
 
+  function animalStoreVisibility(speciesId) {
+    if (window.StudyEconomy && window.StudyEconomy.visibilityFor) {
+      return window.StudyEconomy.visibilityFor(economy.animals, economy.unlockedAnimals, speciesId);
+    }
+    return { tier: 'visible', offset: 0 };
+  }
+
+  function rememberUnlockedAnimal(speciesId) {
+    if (window.StudyEconomy && window.StudyEconomy.unlockedAnimals) {
+      economy.unlockedAnimals = window.StudyEconomy.unlockedAnimals(
+        economy.animals,
+        (economy.unlockedAnimals || []).concat([speciesId])
+      );
+      return;
+    }
+    const unlocked = economy.unlockedAnimals || [];
+    if (unlocked.indexOf(speciesId) === -1) {
+      economy.unlockedAnimals = unlocked.concat([speciesId]);
+    }
+  }
+
+  function updateStoreSectionLabels() {
+    if (els.storeAnimalsLabel) {
+      els.storeAnimalsLabel.textContent = t('storeAnimals') + ' · ' + t('moneyPerCard', {
+        rate: formatCurrency(bucksPerRating(economy.animals))
+      }) + ' · ' + t('moneyPerHour', {
+        rate: formatCurrency(passiveBucksPerHour())
+      });
+    }
+    if (els.storeFarmLabel) {
+      els.storeFarmLabel.textContent = t('storeFarm') + ' · ' + t('farmBoostTotal', {
+        pct: boostPercent(farmBoostMultiplier())
+      });
+    }
+  }
+
+  function activeTabName() {
+    const active = (els.tabBtns || []).find(function (b) { return b.classList.contains('active'); });
+    return active ? active.dataset.tab : '';
+  }
+
+  function animalInstanceIdForNode(node) {
+    if (!node) return '';
+    return node.dataset.instanceId || (node.dataset.species + '-' + node.dataset.index);
+  }
+
+  function defaultAnimalNameForNode(node) {
+    if (!node) return t('animal');
+    const index = Number(node.dataset.index) || 1;
+    return speciesLabel(node.dataset.species || 'pigs') + ' ' + index;
+  }
+
+  function animalNameForNode(node) {
+    const id = animalInstanceIdForNode(node);
+    const custom = id && economy.animalNames && economy.animalNames[id];
+    return custom || defaultAnimalNameForNode(node);
+  }
+
+  function syncAnimalNameAttributes(scope) {
+    const root = scope || els.pigField;
+    if (!root) return;
+    Array.prototype.forEach.call(root.querySelectorAll('.animal-scatter'), function (node) {
+      const name = animalNameForNode(node);
+      node.dataset.animalName = name;
+      node.title = name;
+      node.setAttribute('aria-label', name);
+    });
+  }
+
+  function _storePlacingActive() {
+    return !!document.querySelector('.store-place-preview');
+  }
+
+  function animalNameInteractionBlocked(target) {
+    if (!els.pigField || els.pigField.classList.contains('sell-mode')) return true;
+    if (isSleepFocusActive()) return true;
+    if (els.app && els.app.hidden) return true;
+    if (_storePlacingActive()) return true;
+    if (!target || !target.closest) return false;
+    if (target.closest('#top-nav, #tab-row, #tab-nav, #auth-screen, .overlay-card, #shortcuts-overlay, #new-deck-overlay, #text-prompt-overlay, #pixel-modal-overlay, #settings-overlay, #loading-overlay, #pig-encouragement-overlay, button, a, input, textarea, select, label')) return true;
+    return !document.documentElement.classList.contains('farm-tab') && !!target.closest('#main-content');
+  }
+
+  function hitAnimalForEvent(e) {
+    if (!e || animalNameInteractionBlocked(e.target)) return null;
+    if (typeof fieldAnimalAtPoint !== 'function') return null;
+    return fieldAnimalAtPoint(e.clientX, e.clientY);
+  }
+
+  let _animalNameTip = null;
+  function ensureAnimalNameTip() {
+    if (_animalNameTip) return _animalNameTip;
+    _animalNameTip = document.createElement('div');
+    _animalNameTip.className = 'animal-name-tip';
+    _animalNameTip.hidden = true;
+    document.body.appendChild(_animalNameTip);
+    return _animalNameTip;
+  }
+
+  function positionAnimalNameTip(clientX, clientY) {
+    if (!_animalNameTip || _animalNameTip.hidden) return;
+    const pad = 12;
+    const tw = _animalNameTip.offsetWidth || 90;
+    const th = _animalNameTip.offsetHeight || 24;
+    let x = clientX + pad;
+    let y = clientY - th - pad;
+    if (x + tw > window.innerWidth - 8) x = clientX - tw - pad;
+    if (x < 8) x = 8;
+    if (y < 8) y = clientY + pad;
+    if (y + th > window.innerHeight - 8) y = window.innerHeight - th - 8;
+    _animalNameTip.style.left = x + 'px';
+    _animalNameTip.style.top = y + 'px';
+  }
+
+  function hideAnimalNameTip() {
+    if (_animalNameTip) _animalNameTip.hidden = true;
+  }
+
+  function compactAnimalNames(names, species, removedIndex) {
+    const next = {};
+    Object.keys(names || {}).forEach(function (key) {
+      const parts = key.split('-');
+      const spec = parts[0];
+      const idx = Number(parts[1]);
+      if (spec !== species) {
+        next[key] = names[key];
+        return;
+      }
+      if (!Number.isInteger(idx) || idx === removedIndex) return;
+      next[spec + '-' + (idx > removedIndex ? idx - 1 : idx)] = names[key];
+    });
+    return next;
+  }
+
+  async function renameAnimalNode(node) {
+    if (!node) return;
+    const id = animalInstanceIdForNode(node);
+    if (!id) return;
+    const next = await openTextPrompt({
+      title: t('renameAnimal'),
+      placeholder: t('animalNamePlaceholder'),
+      value: animalNameForNode(node),
+      confirmText: t('rename'),
+      requireNonEmpty: true
+    });
+    if (!next || !next.trim()) return;
+    economy.animalNames = Object.assign({}, economy.animalNames || {});
+    economy.animalNames[id] = next.trim();
+    await persistEconomy();
+    syncAnimalNameAttributes();
+    hideAnimalNameTip();
+  }
+
+  function bindAnimalNames() {
+    if (!els.pigField || els.pigField.dataset.namesBound) return;
+    els.pigField.dataset.namesBound = '1';
+    window.addEventListener('pointermove', function (e) {
+      const node = hitAnimalForEvent(e);
+      if (!node || window.StudyFieldGestureMoved) {
+        hideAnimalNameTip();
+        return;
+      }
+      const tip = ensureAnimalNameTip();
+      tip.textContent = animalNameForNode(node);
+      tip.hidden = false;
+      positionAnimalNameTip(e.clientX, e.clientY);
+    }, { passive: true });
+    window.addEventListener('pointerdown', function () {
+      hideAnimalNameTip();
+    }, { capture: true, passive: true });
+    window.addEventListener('click', function (e) {
+      const node = hitAnimalForEvent(e);
+      if (!node || window.StudyFieldGestureMoved) return;
+      e.preventDefault();
+      e.stopPropagation();
+      renameAnimalNode(node);
+    }, true);
+  }
+
   function bindStoreView() {
+  }
+
+  function fillPixelThumb(container, kind, name, opts) {
+    if (!container) return;
+    container.innerHTML = '';
+    if (window.PixelSprites) {
+      const sprite = kind === 'icon'
+        ? window.PixelSprites.renderIcon(name)
+        : window.PixelSprites.renderAnimal(name, opts || {});
+      container.appendChild(sprite);
+    }
+  }
+
+  function fillFlowerThumb(container, typeId) {
+    if (!container) return;
+    container.innerHTML = '';
+    if (window.StudyFlowers && window.StudyFlowers.render) {
+      container.appendChild(window.StudyFlowers.render(typeId));
+    }
   }
 
   async function renderStore() {
     updateBucksDisplay();
     const active = (els.tabBtns || []).find(function (b) { return b.classList.contains('active'); });
-    applySellMode(sellModeForTab(active ? active.dataset.tab : 'store'));
+    applySellMode(!isSleepFocusActive() && sellModeForTab(active ? active.dataset.tab : 'store'));
+    updateStoreSectionLabels();
 
     els.storeAnimalList.innerHTML = '';
     ANIMAL_SHOP.forEach(function (spec) {
       const owned = (economy.animals[spec.id] || 0);
       const price = buyPrice(spec.id, owned);
+      const visibility = animalStoreVisibility(spec.id);
       const row = document.createElement('div');
       row.className = 'store-row';
+      row.classList.toggle('is-locked-preview', visibility.tier === 'silhouette');
+      row.classList.toggle('is-locked-full', visibility.tier === 'hidden');
       const thumb = document.createElement('div');
       thumb.className = 'store-thumb';
-      const img = document.createElement('img');
-      img.src = ANIMAL_THUMBS[spec.id] || '';
-      img.alt = '';
-      thumb.appendChild(img);
+      if (visibility.tier === 'hidden') {
+        thumb.classList.add('is-mystery');
+        fillPixelThumb(thumb, 'icon', 'help');
+      } else {
+        if (visibility.tier === 'silhouette') thumb.classList.add('is-silhouette');
+        fillPixelThumb(thumb, 'animal', spec.id, { state: 'stand', variant: owned });
+      }
       const info = document.createElement('div');
       info.className = 'store-row-info';
       const name = document.createElement('div');
       name.className = 'store-row-name';
-      name.textContent = speciesLabel(spec.id);
+      name.textContent = visibility.tier === 'visible' ? speciesLabel(spec.id) : '???';
       const meta = document.createElement('div');
       meta.className = 'store-row-meta';
-      meta.textContent = owned + ' ' + t('owned') + ' · ' + formatCurrency(price);
+      if (visibility.tier === 'hidden') {
+        meta.textContent = '???';
+      } else if (visibility.tier === 'silhouette') {
+        meta.textContent = '??? · ' + formatCurrency(price);
+      } else {
+        meta.textContent = owned + ' ' + t('owned') + ' · ' + formatCurrency(price);
+      }
       info.appendChild(name);
       info.appendChild(meta);
       const actions = document.createElement('div');
@@ -3090,10 +3832,12 @@
       const buy = document.createElement('button');
       buy.type = 'button';
       buy.className = 'secondary-btn';
-      buy.textContent = t('buy');
-      buy.disabled = economy.bucks < price;
-      buy.title = economy.bucks < price ? t('notEnoughBucks') : '';
-      buy.addEventListener('click', function () { buyAnimal(spec.id); });
+      buy.textContent = visibility.tier === 'visible' ? t('buy') : t('locked');
+      buy.disabled = visibility.tier !== 'visible' || economy.bucks < price;
+      buy.title = visibility.tier !== 'visible'
+        ? t('animalLockedHint')
+        : (economy.bucks < price ? t('notEnoughBucks') : '');
+      buy.addEventListener('click', function (e) { buyAnimal(spec.id, e); });
       actions.appendChild(buy);
       row.appendChild(thumb);
       row.appendChild(info);
@@ -3108,9 +3852,14 @@
       const samplePen = penPriceForSize(8, 14);
       const troughPrice = troughBuyPrice();
 
-      function farmRow(name, meta, onBuy, disabled) {
+      function farmRow(name, meta, icon, onBuy, disabled, opts) {
+        opts = opts || {};
         const row = document.createElement('div');
         row.className = 'store-row';
+        const thumb = document.createElement('div');
+        thumb.className = 'store-thumb';
+        if (opts.flowerType) fillFlowerThumb(thumb, opts.flowerType);
+        else fillPixelThumb(thumb, 'icon', icon);
         const info = document.createElement('div');
         info.className = 'store-row-info';
         const title = document.createElement('div');
@@ -3129,8 +3878,9 @@
         buy.textContent = t('buy');
         buy.disabled = !!disabled;
         buy.title = disabled ? t('notEnoughBucks') : '';
-        buy.addEventListener('click', onBuy);
+        buy.addEventListener('click', function (e) { onBuy(e); });
         actions.appendChild(buy);
+        row.appendChild(thumb);
         row.appendChild(info);
         row.appendChild(actions);
         els.storeFarmList.appendChild(row);
@@ -3138,67 +3888,76 @@
       farmRow(
         t('pen'),
         t('penMeta', { n: penCount, price: formatCurrency(samplePen) }),
-        function () { buyPen(); },
+        'fence',
+        function (e) { buyPen(e); },
         economy.bucks < samplePen * 0.25
       );
       farmRow(
         t('trough'),
         t('troughMeta', { n: troughCount, price: formatCurrency(troughPrice) }),
-        function () { buyTrough(); },
+        'trough',
+        function (e) { buyTrough(e); },
         economy.bucks < troughPrice
       );
+
+      const flowers = flowerShop();
+      if (flowers.length) {
+        const header = document.createElement('div');
+        header.className = 'store-section-label';
+        header.textContent = t('storeFlowers') + ' · ' + t('flowerBonusTotal', { pct: flowerBonusPercent(economy.flowers) });
+        els.storeFarmList.appendChild(header);
+        flowers.forEach(function (spec) {
+          const owned = flowerOwnedCount(spec.id);
+          const price = flowerPrice(spec.id, owned);
+          farmRow(
+            t(spec.nameKey),
+            t('flowerMeta', { n: owned, bonus: formatBonus(spec.bonus), price: formatCurrency(price) }),
+            '',
+            function (e) { buyFlower(spec.id, e); },
+            economy.bucks < price,
+            { flowerType: spec.id }
+          );
+        });
+      }
     }
 
-    els.storeBgList.innerHTML = '';
-    STORE_BACKGROUNDS.forEach(function (bg) {
-      const unlocked = (economy.unlockedBackgrounds || []).indexOf(bg.id) !== -1;
-      const row = document.createElement('div');
-      row.className = 'store-row';
-      const thumb = document.createElement('div');
-      thumb.className = 'store-thumb store-thumb-swatch';
-      if (bg.swatchImage) {
-        thumb.style.backgroundImage = 'url("' + bg.swatchImage + '")';
-      } else {
-        thumb.style.background = bg.swatch;
-      }
-      const info = document.createElement('div');
-      info.className = 'store-row-info';
-      const name = document.createElement('div');
-      name.className = 'store-row-name';
-      name.textContent = t(bg.nameKey);
-      const meta = document.createElement('div');
-      meta.className = 'store-row-meta';
-      meta.textContent = unlocked ? t('unlocked') : formatCurrency(bg.price);
-      info.appendChild(name);
-      info.appendChild(meta);
-      const actions = document.createElement('div');
-      actions.className = 'store-row-actions';
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'secondary-btn';
-      btn.textContent = unlocked ? t('unlocked') : t('unlock');
-      btn.disabled = unlocked || economy.bucks < bg.price;
-      btn.addEventListener('click', function () { buyBackground(bg.id); });
-      actions.appendChild(btn);
-      row.appendChild(thumb);
-      row.appendChild(info);
-      row.appendChild(actions);
-      els.storeBgList.appendChild(row);
-    });
   }
 
-  async function buyAnimal(speciesId) {
+  async function buyAnimal(speciesId, event) {
+    if (isSleepFocusActive()) return;
+    await accruePassiveIncome({ reason: 'before buy animal', renderStore: false });
     const owned = economy.animals[speciesId] || 0;
     const price = buyPrice(speciesId, owned);
+    if (animalStoreVisibility(speciesId).tier !== 'visible') return;
     if (economy.bucks < price) return;
-    economy.bucks = Math.round((economy.bucks - price) * 100) / 100;
-    economy.animals[speciesId] = owned + 1;
-    await persistEconomy();
-    addScatterAnimal(els.pigField, speciesId, economy.animals[speciesId]).catch(function () {});
-    await renderStore();
+    const nextIndex = owned + 1;
+    const name = speciesLabel(speciesId);
+    if (isCompactLayout()) switchTab('farm');
+    const started = typeof startAnimalPlacement === 'function' && startAnimalPlacement(els.pigField, speciesId, nextIndex, {
+      clientX: event && event.clientX,
+      clientY: event && event.clientY,
+      banner: t('placeStoreItem', { name: name }),
+      priceText: formatCurrency(price),
+      onConfirm: async function (placement) {
+        await accruePassiveIncome({ reason: 'place animal', renderStore: false });
+        if (economy.bucks < price) return;
+        economy.bucks = Math.round((economy.bucks - price) * 100) / 100;
+        economy.animals[speciesId] = nextIndex;
+        rememberUnlockedAnimal(speciesId);
+        economy.animalPlacements = Object.assign({}, economy.animalPlacements || {});
+        economy.animalPlacements[speciesId + '-' + nextIndex] = placement;
+        await persistEconomy();
+        if (typeof addScatterAnimalAt === 'function') await addScatterAnimalAt(els.pigField, speciesId, nextIndex, placement);
+        syncAnimalNameAttributes();
+        await renderStore();
+      }
+    });
+    if (!started) await renderStore();
   }
 
   async function buyPen() {
+    if (isSleepFocusActive()) return;
+    await accruePassiveIncome({ reason: 'before buy pen', renderStore: false });
     if (isCompactLayout()) switchTab('farm');
     startPenPlacement({
       banner: (isCompactLayout() || document.documentElement.classList.contains('farm-tab'))
@@ -3207,6 +3966,7 @@
       priceFn: penPriceForSize,
       formatPrice: function (p) { return formatCurrency(p); },
       onConfirm: async function (payload) {
+        await accruePassiveIncome({ reason: 'place pen', renderStore: false });
         if (economy.bucks < payload.paid) return;
         economy.bucks = Math.round((economy.bucks - payload.paid) * 100) / 100;
         payload.id = generateId();
@@ -3218,19 +3978,61 @@
     });
   }
 
-  async function buyTrough() {
+  async function buyTrough(event) {
+    if (isSleepFocusActive()) return;
+    await accruePassiveIncome({ reason: 'before buy trough', renderStore: false });
     const price = troughBuyPrice();
     if (economy.bucks < price) return;
-    economy.bucks = Math.round((economy.bucks - price) * 100) / 100;
-    const trough = { id: generateId(), paid: price };
-    await persistEconomy();
-    addTroughAtDefault(els.pigField, trough);
-    await persistEconomy();
-    await renderStore();
     if (isCompactLayout()) switchTab('farm');
+    const trough = { id: generateId(), paid: price };
+    const started = typeof startTroughPlacement === 'function' && startTroughPlacement(els.pigField, trough, {
+      clientX: event && event.clientX,
+      clientY: event && event.clientY,
+      banner: t('placeStoreItem', { name: t('trough') }),
+      priceText: formatCurrency(price),
+      onConfirm: async function (placement) {
+        await accruePassiveIncome({ reason: 'place trough', renderStore: false });
+        if (economy.bucks < price) return;
+        economy.bucks = Math.round((economy.bucks - price) * 100) / 100;
+        economy.troughs = (economy.troughs || []).concat([Object.assign({}, trough, placement)]);
+        await persistEconomy();
+        renderPensAndTroughs(els.pigField);
+        await renderStore();
+      }
+    });
+    if (!started) await renderStore();
+  }
+
+  async function buyFlower(typeId, event) {
+    if (isSleepFocusActive()) return;
+    await accruePassiveIncome({ reason: 'before buy flower', renderStore: false });
+    const owned = flowerOwnedCount(typeId);
+    const price = flowerPrice(typeId, owned);
+    const spec = flowerSpec(typeId);
+    if (!spec || economy.bucks < price) return;
+    if (isCompactLayout()) switchTab('farm');
+    const flower = { id: generateId(), type: typeId, paid: price };
+    const started = typeof startFlowerPlacement === 'function' && startFlowerPlacement(els.pigField, flower, {
+      clientX: event && event.clientX,
+      clientY: event && event.clientY,
+      banner: t('placeStoreItem', { name: t(spec.nameKey) }),
+      priceText: formatCurrency(price),
+      onConfirm: async function (placement) {
+        await accruePassiveIncome({ reason: 'place flower', renderStore: false });
+        if (economy.bucks < price) return;
+        economy.bucks = Math.round((economy.bucks - price) * 100) / 100;
+        economy.flowers = (economy.flowers || []).concat([Object.assign({}, flower, placement)]);
+        await persistEconomy();
+        renderPensAndTroughs(els.pigField);
+        await renderStore();
+      }
+    });
+    if (!started) await renderStore();
   }
 
   async function sellPen(penId) {
+    if (isSleepFocusActive()) return;
+    await accruePassiveIncome({ reason: 'before sell pen', renderStore: false });
     const pen = (economy.pens || []).find(function (p) { return p.id === penId; });
     if (!pen) return;
     const refund = Math.round((pen.paid || 0) * 0.5 * 100) / 100;
@@ -3241,6 +4043,8 @@
   }
 
   async function sellTrough(troughId) {
+    if (isSleepFocusActive()) return;
+    await accruePassiveIncome({ reason: 'before sell trough', renderStore: false });
     const tr = (economy.troughs || []).find(function (p) { return p.id === troughId; });
     if (!tr) return;
     const refund = Math.round((tr.paid || 0) * 0.5 * 100) / 100;
@@ -3250,25 +4054,34 @@
     await renderStore();
   }
 
-  async function buyBackground(id) {
-    const bg = STORE_BACKGROUNDS.find(function (b) { return b.id === id; });
-    if (!bg) return;
-    if ((economy.unlockedBackgrounds || []).indexOf(id) !== -1) return;
-    if (economy.bucks < bg.price) return;
-    economy.bucks = Math.round((economy.bucks - bg.price) * 100) / 100;
-    economy.unlockedBackgrounds = (economy.unlockedBackgrounds || []).concat([id]);
+  async function sellFlower(flowerId) {
+    if (isSleepFocusActive()) return;
+    await accruePassiveIncome({ reason: 'before sell flower', renderStore: false });
+    const fl = (economy.flowers || []).find(function (p) { return p.id === flowerId; });
+    if (!fl) return;
+    const refund = Math.round((fl.paid || 0) * 0.5 * 100) / 100;
+    economy.bucks = Math.round((economy.bucks + refund) * 100) / 100;
+    if (typeof removeFlower === 'function') removeFlower(els.pigField, flowerId);
     await persistEconomy();
     await renderStore();
   }
 
   async function sellAnimalInstance(speciesId, instanceId) {
+    if (isSleepFocusActive()) return;
+    await accruePassiveIncome({ reason: 'before sell animal', renderStore: false });
     const owned = economy.animals[speciesId] || 0;
     if (owned < 1) return;
     const refund = sellPrice(speciesId, owned);
+    const parts = String(instanceId || '').split('-');
+    const removedIndex = Number(parts[1]);
     economy.animals[speciesId] = owned - 1;
     economy.bucks = Math.round((economy.bucks + refund) * 100) / 100;
+    if (Number.isInteger(removedIndex)) {
+      economy.animalNames = compactAnimalNames(economy.animalNames, speciesId, removedIndex);
+    }
     await persistEconomy();
     removeScatterAnimal(els.pigField, speciesId, instanceId);
+    syncAnimalNameAttributes();
     const active = (els.tabBtns || []).find(function (b) { return b.classList.contains('active'); });
     if (active && active.dataset.tab === 'store') await renderStore();
   }
@@ -3300,6 +4113,7 @@
       const img = e.target.closest && e.target.closest('.animal-scatter');
       const penEl = e.target.closest && e.target.closest('.pen-fence');
       const troughEl = e.target.closest && e.target.closest('.trough-object');
+      const flowerEl = e.target.closest && e.target.closest('.flower-object');
       let text = '';
       if (img) {
         const owned = economy.animals[img.dataset.species] || 0;
@@ -3310,6 +4124,9 @@
       } else if (troughEl) {
         const tr = (economy.troughs || []).find(function (p) { return p.id === troughEl.dataset.id; });
         text = t('sellTrough', { price: formatCurrency(Math.round((tr && tr.paid || 0) * 0.5 * 100) / 100) });
+      } else if (flowerEl) {
+        const fl = (economy.flowers || []).find(function (p) { return p.id === flowerEl.dataset.id; });
+        text = t('sellFlower', { price: formatCurrency(Math.round((fl && fl.paid || 0) * 0.5 * 100) / 100) });
       } else {
         return;
       }
@@ -3327,7 +4144,7 @@
       positionSellTip(e.clientX, e.clientY);
     });
     els.pigField.addEventListener('mouseout', function (e) {
-      const hit = e.target.closest && e.target.closest('.animal-scatter, .pen-fence, .trough-object');
+      const hit = e.target.closest && e.target.closest('.animal-scatter, .pen-fence, .trough-object, .flower-object');
       if (!hit) return;
       if (e.relatedTarget && hit.contains(e.relatedTarget)) return;
       hideSellTip();
@@ -3338,6 +4155,7 @@
       const img = e.target.closest && e.target.closest('.animal-scatter');
       const penEl = e.target.closest && e.target.closest('.pen-fence');
       const troughEl = e.target.closest && e.target.closest('.trough-object');
+      const flowerEl = e.target.closest && e.target.closest('.flower-object');
       if (img) {
         e.preventDefault();
         sellAnimalInstance(img.dataset.species, img.dataset.instanceId);
@@ -3353,6 +4171,12 @@
       if (troughEl) {
         e.preventDefault();
         sellTrough(troughEl.dataset.id);
+        hideSellTip();
+        return;
+      }
+      if (flowerEl) {
+        e.preventDefault();
+        sellFlower(flowerEl.dataset.id);
         hideSellTip();
       }
     });

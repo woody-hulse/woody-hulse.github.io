@@ -259,6 +259,7 @@ function revealAllOcclusionMasks(container) {
     try {
       const tags = (typeof window.getAddFormTags === 'function') ? window.getAddFormTags() : [];
       await addOcclusionCard(els.editorImage.src, regions, deckId, tags);
+      if (typeof window.flushStudyStorage === 'function') await window.flushStudyStorage();
       resetEditor();
       if (typeof window.onOcclusionCardAdded === 'function') window.onOcclusionCardAdded();
       const original = els.saveBtn.textContent;

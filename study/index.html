@@ -6,14 +6,11 @@
 <title>Study Farm</title>
 <meta name="description" content="Study Farm — a flashcard study app with spaced repetition, decks, and Anki import.">
 
-<link rel="icon" type="image/x-icon" href="resources/favicon.ico">
-<link rel="apple-touch-icon" href="resources/favicon-180.png">
+<link rel="icon" type="image/x-icon" href="resources/favicon.ico?v=pixel-axis5-20260822">
+<link rel="apple-touch-icon" href="resources/favicon-180.png?v=pixel-axis5-20260822">
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
-
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=pixel-path-passive-fence-20260823">
+<link rel="stylesheet" href="pixel-theme.css?v=pixel-path-passive-fence-20260823">
 
 <!-- Cloud auth + storage bridge (Firebase). All three are ES modules,
      deferred by the HTML spec by default; auth.js and cloud-store.js each use
@@ -23,9 +20,9 @@
      window.FIREBASE_CONFIG exists when the other two run, and cloud-store
      runs after auth so it can reuse the same initialized Firebase app
      (module scripts execute in document order relative to each other). -->
-<script type="module" src="js/firebase-config.js"></script>
-<script type="module" src="js/auth.js"></script>
-<script type="module" src="js/cloud-store.js"></script>
+<script type="module" src="js/firebase-config.js?v=pixel-axis5-20260822"></script>
+<script type="module" src="js/auth.js?v=pixel-axis5-20260822"></script>
+<script type="module" src="js/cloud-store.js?v=pixel-axis6-persist-20260822"></script>
 </head>
 <body>
 
@@ -37,7 +34,7 @@
        box). This is what prevents the first-paint flash of the wrong form. -->
   <div id="auth-screen" hidden>
     <div class="auth-card">
-      <img class="auth-mascot" src="resources/pigs/mascot-knorrig.png" alt="" aria-hidden="true">
+      <span class="auth-mascot pixel-mascot" data-pixel-sprite="pigs" data-pixel-state="sit" aria-hidden="true"></span>
       <h1 data-i18n="appTitle">Study Farm</h1>
       <p data-i18n="whoEnters">Who enters?</p>
       <div class="auth-form" id="auth-local-form" hidden>
@@ -51,12 +48,13 @@
            then. -->
       <div class="auth-cloud" id="auth-cloud-form" hidden>
         <button id="google-signin-btn" class="google-btn" type="button">
-          <svg class="google-g-icon" viewBox="0 0 18 18" aria-hidden="true">
-            <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/>
-            <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/>
-            <path fill="#FBBC05" d="M3.97 10.72A5.4 5.4 0 0 1 3.68 9c0-.6.1-1.18.29-1.72V4.95H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.05l3.01-2.33z"/>
-            <path fill="#EA4335" d="M9 3.58c1.32 0 2.51.46 3.44 1.35l2.59-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/>
-          </svg>
+          <span class="pixel-google-mark" aria-hidden="true">
+            <span data-g="b"></span><span data-g="b"></span><span data-g="b"></span><span data-g="r"></span><span data-g="r"></span>
+            <span data-g="b"></span><span></span><span></span><span></span><span data-g="r"></span>
+            <span data-g="y"></span><span></span><span data-g="g"></span><span data-g="g"></span><span data-g="g"></span>
+            <span data-g="y"></span><span></span><span></span><span></span><span data-g="g"></span>
+            <span data-g="y"></span><span data-g="y"></span><span data-g="g"></span><span data-g="g"></span><span data-g="g"></span>
+          </span>
           <span>Sign in with Google</span>
         </button>
         <div id="auth-cloud-error" class="auth-error" role="alert" hidden></div>
@@ -69,7 +67,7 @@
     <header id="top-nav">
       <div id="top-nav-inner">
         <div id="brand">
-          <img id="brand-mascot" src="resources/pigs/mascot-knorrig.png" alt="">
+          <span id="brand-mascot" class="pixel-mascot" data-pixel-sprite="pigs" data-pixel-state="stand" aria-hidden="true"></span>
           <h1 id="app-title" data-i18n="appTitle">Study Farm</h1>
           <span id="user-greeting"></span>
         </div>
@@ -90,32 +88,34 @@
       </div>
       <nav id="tab-nav">
         <button class="tab-btn" data-tab="study" data-i18n-title="study" data-i18n-aria="study" title="Study" aria-label="Study">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M8 11h8M8 14.5h5"/></svg>
+          <span data-pixel-icon="study" aria-hidden="true"></span>
         </button>
         <button class="tab-btn active" data-tab="naists" data-i18n-title="nests" data-i18n-aria="nests" title="Nests" aria-label="Nests">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13c0 3.5 4 6 9 6s9-2.5 9-6"/><path d="M3 13c1.5-1.3 3-1.3 4.5 0M16.5 13c1.5-1.3 3-1.3 4.5 0"/><ellipse cx="10" cy="13.1" rx="1.6" ry="1.9"/><ellipse cx="14" cy="13.4" rx="1.6" ry="1.9"/></svg>
+          <span data-pixel-icon="nests" aria-hidden="true"></span>
         </button>
         <button class="tab-btn" data-tab="edit" data-i18n-title="editDeck" data-i18n-aria="editDeck" title="Edit Deck" aria-label="Edit Deck">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="12" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg>
+          <span data-pixel-icon="edit" aria-hidden="true"></span>
         </button>
         <button class="tab-btn" data-tab="stats" data-i18n-title="stats" data-i18n-aria="stats" title="Stats" aria-label="Stats">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16"/><path d="M7 20v-6M12 20v-10M17 20v-4"/></svg>
+          <span data-pixel-icon="stats" aria-hidden="true"></span>
         </button>
         <button class="tab-btn" data-tab="farm" data-i18n-title="farm" data-i18n-aria="farm" title="Farm" aria-label="Farm">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V7M12 20V5M19 20V7"/><path d="M4 10h16M4 14.5h16"/></svg>
+          <span data-pixel-icon="farm" aria-hidden="true"></span>
         </button>
         <button class="tab-btn" data-tab="store" data-i18n-title="store" data-i18n-aria="store" title="Store" aria-label="Store">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8h12l-1.1 12H7.1L6 8z"/><path d="M9 8V6.2A3 3 0 0 1 15 6.2V8"/><path d="M9 12h6"/></svg>
+          <span data-pixel-icon="store" aria-hidden="true"></span>
         </button>
       </nav>
       <div id="tab-row-tools">
         <button id="focus-btn" class="icon-btn" type="button" data-i18n-title="focus" data-i18n-aria="focus" title="Focus" aria-label="Focus" aria-pressed="false">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+          <span data-pixel-icon="focus" aria-hidden="true"></span>
         </button>
         <button id="settings-btn" class="icon-btn" type="button" data-i18n-title="settings" data-i18n-aria="settings" title="Settings" aria-label="Settings">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span data-pixel-icon="settings" aria-hidden="true"></span>
         </button>
-        <button id="shortcuts-btn" class="icon-btn" type="button" data-i18n-title="shortcuts" data-i18n-aria="shortcuts" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">?</button>
+        <button id="shortcuts-btn" class="icon-btn" type="button" data-i18n-title="shortcuts" data-i18n-aria="shortcuts" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">
+          <span data-pixel-icon="help" aria-hidden="true"></span>
+        </button>
       </div>
     </div>
 
@@ -206,7 +206,7 @@
           <div id="edit-deck-actions">
             <button id="edit-deck-rename-btn" class="secondary-btn" data-i18n="rename">Rename</button>
             <button id="edit-deck-delete-btn" class="icon-action-btn delete-btn" type="button" data-i18n-title="delete" data-i18n-aria="delete" title="Delete" aria-label="Delete">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13M10 11v6M14 11v6"/></svg>
+              <span data-pixel-icon="trash" aria-hidden="true"></span>
             </button>
           </div>
 
@@ -283,26 +283,18 @@
       <!-- FARM VIEW — full-bleed field on compact screens (and a clear
            field workspace on desktop). Sprites live in #pig-field; this
            view stays empty so the pasture shows through. -->
-      <section id="view-farm" class="view">
-        <p id="farm-tab-hint" class="farm-tab-hint">
-          <span data-i18n="farmHint">Drag to arrange. Buy in Store.</span>
-          <span class="farm-hint-sell" data-i18n="farmHintSell">Tap an animal, pen, or trough here to sell.</span>
-        </p>
-      </section>
+      <section id="view-farm" class="view"></section>
 
-      <!-- STORE VIEW — buy/sell animals and unlock background cosmetics -->
+      <!-- STORE VIEW — buy/sell animals and farm fixtures -->
       <section id="view-store" class="view">
         <div class="panel store-panel">
           <div class="store-header">
             <h2 class="view-title" data-i18n="storeTitle">Store</h2>
           </div>
-          <h3 class="panel-subtitle" data-i18n="storeAnimals">Animals</h3>
+          <div id="store-animals-label" class="store-section-label" data-i18n="storeAnimals">Animals</div>
           <div id="store-animal-list" class="store-list"></div>
-          <h3 class="panel-subtitle" data-i18n="storeFarm">Farm</h3>
-          <p class="store-hint" data-i18n="troughHint">A trough only helps animals that share a pen with it.</p>
+          <div id="store-farm-label" class="store-section-label" data-i18n="storeFarm">Farm</div>
           <div id="store-farm-list" class="store-list"></div>
-          <h3 class="panel-subtitle" data-i18n="storeBackgrounds">Backgrounds</h3>
-          <div id="store-bg-list" class="store-list"></div>
         </div>
       </section>
 
@@ -320,8 +312,8 @@
 
   <!-- ===================== OVERLAYS ===================== -->
   <div id="pig-encouragement-overlay" hidden>
-    <div class="overlay-card">
-      <img id="pig-encouragement-img" alt="">
+    <div class="overlay-card encouragement-card">
+      <div id="pig-encouragement-img" class="encouragement-sprite-slot" role="img"></div>
       <div id="pig-encouragement-text"></div>
       <button id="pig-encouragement-continue" type="button" data-i18n="studyingContinue">Keep studying</button>
     </div>
@@ -359,7 +351,7 @@
     </div>
   </div>
 
-  <!-- Generic in-app text prompt (replaces window.prompt for New nest,
+  <!-- Generic in-app text entry dialog for New nest,
        rename nest/deck, and the nickname flow). Driven by
        openTextPrompt() in app.js. -->
   <div id="text-prompt-overlay" hidden>
@@ -373,8 +365,18 @@
     </div>
   </div>
 
-  <!-- Settings overlay: nickname, appearance, themes, vocab, focus,
-       custom background image, and (cloud only) sign out. -->
+  <div id="pixel-modal-overlay" hidden>
+    <div class="overlay-card pixel-modal-card" role="dialog" aria-modal="true" aria-labelledby="pixel-modal-title" aria-describedby="pixel-modal-message">
+      <h2 id="pixel-modal-title" data-i18n="confirm">Confirm</h2>
+      <p id="pixel-modal-message" class="pixel-modal-message"></p>
+      <div class="text-prompt-actions">
+        <button id="pixel-modal-cancel" class="secondary-btn" type="button" data-i18n="cancel">Cancel</button>
+        <button id="pixel-modal-confirm" class="primary-btn" type="button" data-i18n="ok">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings overlay: nickname, appearance, vocab, focus, and sign out. -->
   <div id="settings-overlay" hidden>
     <div class="overlay-card settings-card">
       <h2 data-i18n="settings">Settings</h2>
@@ -392,9 +394,13 @@
         <button id="settings-vocab-toggle" class="switch" type="button" role="switch" aria-checked="false" data-i18n-aria="translate"></button>
       </div>
 
-      <div class="settings-section settings-toggle-row">
+      <div class="settings-section">
         <h3 class="settings-label" data-i18n="focusMode">Focus mode</h3>
-        <button id="settings-focus-toggle" class="switch" type="button" role="switch" aria-checked="false" data-i18n-aria="focusMode"></button>
+        <div id="settings-focus-mode-row" class="settings-theme-row" role="radiogroup" data-i18n-aria="focusMode" aria-label="Focus mode">
+          <button type="button" class="secondary-btn" data-focus-choice="off" data-i18n="focusOff">Off</button>
+          <button type="button" class="secondary-btn" data-focus-choice="sit" data-i18n="focusSitShort">Sit</button>
+          <button type="button" class="secondary-btn" data-focus-choice="sleep" data-i18n="focusSleepShort">Sleep</button>
+        </div>
       </div>
 
       <div class="settings-section settings-toggle-row">
@@ -417,14 +423,8 @@
       </div>
 
       <div class="settings-section">
-        <h3 class="settings-label" data-i18n="background">Background</h3>
-        <div id="settings-bg-swatches" class="swatch-grid"></div>
-        <div class="settings-bg-image-row">
-          <input id="settings-bg-image-input" type="file" accept="image/*" hidden>
-          <button id="settings-bg-image-btn" class="secondary-btn" type="button" data-i18n="uploadImageBtn">Upload image</button>
-          <button id="settings-bg-image-clear" class="secondary-btn" type="button" hidden data-i18n="removeImageBtn">Remove image</button>
-        </div>
-        <div id="settings-bg-status" class="settings-status"></div>
+        <h3 class="settings-label">Developer</h3>
+        <button id="sprite-lab-open-btn" class="secondary-btn" type="button">Sprite Lab</button>
       </div>
 
       <div class="settings-section" id="settings-signout-section" hidden>
@@ -435,20 +435,43 @@
     </div>
   </div>
 
-  <div id="loading-overlay" hidden>
-    <img id="spinner-img" class="pig-spinner" alt="Loading">
+  <div id="sprite-lab-overlay" hidden>
+    <div class="overlay-card sprite-lab-card">
+      <h2>Sprite Lab</h2>
+      <div class="sprite-lab-controls">
+        <select id="sprite-lab-species" aria-label="Species"></select>
+        <select id="sprite-lab-state" aria-label="State"></select>
+        <input id="sprite-lab-frame" type="range" min="0" max="3" value="0" aria-label="Frame">
+        <button id="sprite-lab-play-btn" class="secondary-btn" type="button">Play</button>
+      </div>
+      <div id="sprite-lab-preview" aria-hidden="true"></div>
+      <div id="sprite-lab-grid" aria-label="Editable pixel grid"></div>
+      <div id="sprite-lab-palette" class="swatch-grid" aria-label="Palette"></div>
+      <textarea id="sprite-lab-output" readonly aria-label="Sprite JSON"></textarea>
+      <div class="text-prompt-actions">
+        <button id="sprite-lab-reset-btn" class="secondary-btn" type="button">Reset</button>
+        <button id="sprite-lab-close-btn" class="secondary-btn" type="button" data-i18n="close">Close</button>
+      </div>
+    </div>
   </div>
 
-<script src="js/i18n.js"></script>
-<script src="js/storage.js"></script>
-<script src="js/srs.js"></script>
-<script src="js/stats.js"></script>
-<script src="js/images.js"></script>
-<script src="js/occlusion.js"></script>
-<script src="vendor/jszip.min.js"></script>
-<script src="vendor/sql-wasm.js"></script>
-<script src="js/anki-import.js"></script>
-<script src="js/pigs.js"></script>
-<script src="js/app.js"></script>
+  <div id="loading-overlay" hidden>
+    <span id="spinner-img" class="pig-spinner" data-pixel-sprite="pigs" data-pixel-state="walk" role="img" aria-label="Loading"></span>
+  </div>
+
+<script src="js/i18n.js?v=pixel-path-passive-fence-20260823"></script>
+<script src="js/flowers.js?v=pixel-clover-20260823"></script>
+<script src="js/economy.js?v=pixel-path-passive-fence-20260823"></script>
+<script src="js/storage.js?v=pixel-passive-income-20260823"></script>
+<script src="js/srs.js?v=pixel-axis5-20260822"></script>
+<script src="js/stats.js?v=pixel-axis5-20260822"></script>
+<script src="js/images.js?v=pixel-axis5-20260822"></script>
+<script src="js/occlusion.js?v=pixel-axis6-persist-20260822"></script>
+<script src="vendor/jszip.min.js?v=pixel-axis5-20260822"></script>
+<script src="vendor/sql-wasm.js?v=pixel-axis5-20260822"></script>
+<script src="js/anki-import.js?v=pixel-axis5-20260822"></script>
+<script src="js/pixel-sprites.js?v=pixel-axis2-sprites-20260822"></script>
+<script src="js/pigs.js?v=pixel-path-passive-fence-20260823"></script>
+<script src="js/app.js?v=pixel-path-passive-fence-20260823"></script>
 </body>
 </html>
