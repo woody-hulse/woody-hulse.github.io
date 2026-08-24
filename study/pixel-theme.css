@@ -507,55 +507,52 @@
 
 :root[data-bg="grass"],
 :root[data-theme][data-bg="grass"] {
-  --bg: #72b84e;
-  --bg-deep: #316f49;
-  --pixel-grass: #72b84e;
-  --pixel-grass-dark: #316f49;
-  --pixel-grass-light: #b8d86b;
+  --bg: #79b95a;
+  --bg-deep: #3e7c46;
+  --pixel-grass: #79b95a;
+  --pixel-grass-dark: #3e7c46;
+  --pixel-grass-light: #a8d36a;
   --pixel-grass-tile:
-    linear-gradient(90deg, transparent 0 4px, rgba(49, 111, 73, 0.42) 4px 8px, transparent 8px 32px),
-    linear-gradient(0deg, transparent 0 20px, rgba(184, 216, 107, 0.48) 20px 24px, transparent 24px 32px),
-    linear-gradient(90deg, transparent 0 22px, rgba(49, 111, 73, 0.36) 22px 26px, transparent 26px 32px),
-    linear-gradient(0deg, transparent 0 6px, rgba(184, 216, 107, 0.34) 6px 10px, transparent 10px 32px),
-    linear-gradient(90deg, transparent 0 14px, rgba(215, 204, 88, 0.42) 14px 18px, transparent 18px 32px),
-    linear-gradient(90deg, rgba(255,255,255,0.08) 0 4px, transparent 4px 100%),
-    linear-gradient(0deg, rgba(255,255,255,0.08) 0 4px, transparent 4px 100%),
-    linear-gradient(45deg, transparent 0 10px, rgba(49, 111, 73, 0.28) 10px 14px, transparent 14px 24px),
-    linear-gradient(135deg, transparent 0 8px, rgba(184, 216, 107, 0.34) 8px 12px, transparent 12px 24px),
+    linear-gradient(90deg, transparent 0 7px, rgba(62, 124, 70, 0.34) 7px 9px, transparent 9px 32px),
+    linear-gradient(0deg, transparent 0 19px, rgba(168, 211, 106, 0.36) 19px 21px, transparent 21px 32px),
+    linear-gradient(90deg, transparent 0 20px, rgba(86, 145, 67, 0.28) 20px 22px, transparent 22px 32px),
+    linear-gradient(0deg, transparent 0 5px, rgba(205, 205, 96, 0.18) 5px 7px, transparent 7px 32px),
+    linear-gradient(45deg, transparent 0 12px, rgba(62, 124, 70, 0.22) 12px 14px, transparent 14px 28px),
+    linear-gradient(135deg, transparent 0 10px, rgba(168, 211, 106, 0.24) 10px 12px, transparent 12px 26px),
     linear-gradient(180deg, var(--pixel-grass-light), var(--pixel-grass));
 }
 
 :root[data-bg="grass-meadow"],
 :root[data-theme][data-bg="grass-meadow"] {
-  --bg: #80bf58;
-  --bg-deep: #397b49;
-  --pixel-grass: #79b84f;
-  --pixel-grass-dark: #2f6f42;
-  --pixel-grass-light: #c2dd75;
+  --bg: #83bd55;
+  --bg-deep: #3c7746;
+  --pixel-grass: #83bd55;
+  --pixel-grass-dark: #3c7746;
+  --pixel-grass-light: #bbd96f;
   --pixel-grass-tile:
-    linear-gradient(90deg, transparent 0 4px, rgba(47, 111, 66, 0.46) 4px 8px, transparent 8px 32px),
-    linear-gradient(0deg, transparent 0 22px, rgba(194, 221, 117, 0.52) 22px 26px, transparent 26px 32px),
-    linear-gradient(90deg, transparent 0 10px, rgba(239, 182, 67, 0.34) 10px 14px, transparent 14px 32px),
-    linear-gradient(0deg, transparent 0 8px, rgba(207, 70, 104, 0.26) 8px 12px, transparent 12px 32px),
-    linear-gradient(90deg, transparent 0 25px, rgba(36, 137, 143, 0.22) 25px 29px, transparent 29px 32px),
-    linear-gradient(45deg, transparent 0 9px, rgba(47, 111, 66, 0.26) 9px 13px, transparent 13px 24px),
-    linear-gradient(135deg, transparent 0 7px, rgba(194, 221, 117, 0.32) 7px 11px, transparent 11px 24px),
+    linear-gradient(90deg, transparent 0 6px, rgba(60, 119, 70, 0.3) 6px 8px, transparent 8px 32px),
+    linear-gradient(0deg, transparent 0 22px, rgba(187, 217, 111, 0.34) 22px 24px, transparent 24px 32px),
+    linear-gradient(90deg, transparent 0 11px, #f1c85b 11px 13px, transparent 13px 32px),
+    linear-gradient(0deg, transparent 0 9px, #cf4668 9px 11px, transparent 11px 32px),
+    linear-gradient(90deg, transparent 0 25px, #f8e3a1 25px 27px, transparent 27px 32px),
+    linear-gradient(45deg, transparent 0 13px, rgba(60, 119, 70, 0.2) 13px 15px, transparent 15px 28px),
+    linear-gradient(135deg, transparent 0 8px, rgba(187, 217, 111, 0.22) 8px 10px, transparent 10px 26px),
     linear-gradient(180deg, var(--pixel-grass-light), var(--pixel-grass));
 }
 
 :root[data-bg="grass-noise"],
 :root[data-theme][data-bg="grass-noise"] {
-  --bg: #74b652;
-  --bg-deep: #346f44;
-  --pixel-grass: #74b652;
-  --pixel-grass-dark: #2e6b43;
-  --pixel-grass-light: #acd064;
+  --bg: #77b65a;
+  --bg-deep: #3a7446;
+  --pixel-grass: #77b65a;
+  --pixel-grass-dark: #3a7446;
+  --pixel-grass-light: #aad16a;
   --pixel-grass-tile:
-    linear-gradient(90deg, rgba(46, 107, 67, 0.18) 0 4px, transparent 4px 8px, rgba(172, 208, 100, 0.16) 8px 12px, transparent 12px 16px),
-    linear-gradient(0deg, transparent 0 4px, rgba(46, 107, 67, 0.16) 4px 8px, transparent 8px 12px, rgba(172, 208, 100, 0.14) 12px 16px),
-    linear-gradient(90deg, transparent 0 6px, rgba(91, 148, 69, 0.28) 6px 10px, transparent 10px 20px, rgba(56, 128, 73, 0.22) 20px 24px, transparent 24px 32px),
-    linear-gradient(0deg, transparent 0 18px, rgba(190, 216, 107, 0.22) 18px 22px, transparent 22px 32px),
-    linear-gradient(45deg, transparent 0 10px, rgba(46, 107, 67, 0.18) 10px 14px, transparent 14px 24px),
+    linear-gradient(90deg, rgba(58, 116, 70, 0.16) 0 2px, transparent 2px 6px, rgba(170, 209, 106, 0.14) 6px 8px, transparent 8px 16px),
+    linear-gradient(0deg, transparent 0 3px, rgba(58, 116, 70, 0.12) 3px 5px, transparent 5px 10px, rgba(170, 209, 106, 0.12) 10px 12px, transparent 12px 16px),
+    linear-gradient(90deg, transparent 0 9px, rgba(82, 139, 70, 0.2) 9px 11px, transparent 11px 23px, rgba(58, 116, 70, 0.18) 23px 25px, transparent 25px 32px),
+    linear-gradient(0deg, transparent 0 18px, rgba(202, 211, 101, 0.14) 18px 20px, transparent 20px 32px),
+    linear-gradient(45deg, transparent 0 11px, rgba(58, 116, 70, 0.14) 11px 13px, transparent 13px 26px),
     linear-gradient(180deg, var(--pixel-grass-light), var(--pixel-grass));
 }
 
@@ -1889,6 +1886,49 @@ select:focus,
   color: var(--pixel-line);
   text-shadow: none;
   box-shadow: 3px 3px 0 var(--pixel-shadow);
+}
+
+.farm-object-tip {
+  background: var(--gold-tint);
+  color: var(--pixel-line);
+}
+
+.store-quantity-toggle {
+  color: var(--pixel-line);
+  text-shadow: none;
+}
+
+.store-quantity-toggle .secondary-btn {
+  min-height: 30px;
+  border-radius: 0;
+}
+
+.store-quantity-toggle .secondary-btn.active {
+  background: var(--gold);
+  color: var(--pixel-line);
+  box-shadow: inset 2px 2px 0 rgba(255, 255, 255, 0.28), 3px 3px 0 var(--pixel-shadow);
+}
+
+.card-tag-row {
+  top: 8px;
+  right: 8px;
+}
+
+.card-tag-row .tag-chip {
+  font-size: clamp(0.5rem, 1.2vw, 0.64rem);
+  padding: 2px 6px;
+  box-shadow: 2px 2px 0 var(--pixel-shadow);
+}
+
+.money-float {
+  font-family: var(--font-display);
+  color: rgba(236, 232, 210, 0.84);
+  text-shadow: 1px 1px 0 rgba(47, 49, 46, 0.45);
+  letter-spacing: 0;
+}
+
+.trough-object.needs-refill {
+  filter: saturate(0.78) brightness(0.9);
 }
 
 #field-place-layer {

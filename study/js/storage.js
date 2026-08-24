@@ -487,12 +487,14 @@ function _normalizeTroughs(raw) {
       Number.isFinite(Number(tr.leftVw)) && Number.isFinite(Number(tr.topVh));
   }).map(function (tr) {
     const heightVw = Number(tr.heightVw);
+    const filledAt = _normalizeTimestamp(tr.filledAt) || Date.now();
     return {
       id: tr.id,
       leftVw: Number(tr.leftVw),
       topVh: Number(tr.topVh),
       heightVw: Number.isFinite(heightVw) ? heightVw : 1.55,
-      paid: typeof tr.paid === 'number' && isFinite(tr.paid) ? tr.paid : 0
+      paid: typeof tr.paid === 'number' && isFinite(tr.paid) ? tr.paid : 0,
+      filledAt: filledAt
     };
   });
 }
@@ -634,7 +636,7 @@ async function getEconomy() {
   const stored = readJSON(STUDY_ECONOMY_KEY, null);
   const hasStored = !!(stored && typeof stored === 'object');
   const next = _normalizeEconomy(hasStored ? stored : { economyV2: true });
-  if (!hasStored || !stored.economyV2 || !Array.isArray(stored.flowers) || !Array.isArray(stored.coops) || !Array.isArray(stored.unlockedAnimals) || !stored.animalNames || typeof stored.animalNames !== 'object' || Array.isArray(stored.animalNames) || !stored.animalHappiness || typeof stored.animalHappiness !== 'object' || Array.isArray(stored.animalHappiness) || !stored.rewardLedger || typeof stored.rewardLedger !== 'object' || Array.isArray(stored.rewardLedger) || !stored.passiveIncome || typeof stored.passiveIncome !== 'object' || Array.isArray(stored.passiveIncome)) {
+  if (!hasStored || !stored.economyV2 || !Array.isArray(stored.flowers) || !Array.isArray(stored.coops) || !Array.isArray(stored.unlockedAnimals) || !stored.animalNames || typeof stored.animalNames !== 'object' || Array.isArray(stored.animalNames) || !stored.animalHappiness || typeof stored.animalHappiness !== 'object' || Array.isArray(stored.animalHappiness) || !stored.rewardLedger || typeof stored.rewardLedger !== 'object' || Array.isArray(stored.rewardLedger) || !stored.passiveIncome || typeof stored.passiveIncome !== 'object' || Array.isArray(stored.passiveIncome) || (Array.isArray(stored.troughs) && stored.troughs.some(function (tr) { return tr && !tr.filledAt; }))) {
     writeJSON(STUDY_ECONOMY_KEY, next);
     await flushStudyStorage();
   }

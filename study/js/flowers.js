@@ -139,6 +139,30 @@
     }
   }
 
+  function hashSeed(value) {
+    const text = String(value || '');
+    let h = 2166136261;
+    for (let i = 0; i < text.length; i++) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  function seededRng(seed) {
+    let state = seed >>> 0;
+    return function () {
+      state = (state + 0x6d2b79f5) | 0;
+      let t = Math.imul(state ^ (state >>> 15), 1 | state);
+      t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function randInt(rng, min, max) {
+    return Math.floor(rng() * (max - min + 1)) + min;
+  }
+
   function leafMound(cells, spec, y, inset) {
     const left = inset || 2;
     const width = spec.width - left * 2;
@@ -227,7 +251,7 @@
     dot(cells, spec, cx, cy, 'center');
   }
 
-  function cellsFor(spec) {
+  function baseCellsFor(spec) {
     const cells = [];
     const baseY = spec.height - 5;
     leafMound(cells, spec, baseY, spec.width > 20 ? 3 : 2);
@@ -308,6 +332,49 @@
     return cells;
   }
 
+  function addFlowerVariation(cells, spec, seed) {
+    if (!seed) return cells;
+    const rng = seededRng(hashSeed(spec.id + ':' + seed));
+    const out = cells.slice();
+    const baseY = spec.height - 5;
+    const leafDots = 4 + randInt(rng, 0, 5);
+    for (let i = 0; i < leafDots; i++) {
+      const x = randInt(rng, 2, spec.width - 3);
+      const y = randInt(rng, Math.max(2, baseY - 1), spec.height - 2);
+      dot(out, spec, x, y, rng() > 0.45 ? 'leafLight' : 'leaf');
+      if (rng() > 0.7) dot(out, spec, x + (rng() > 0.5 ? 1 : -1), y + 1, 'shadow');
+    }
+    if (spec.shape === 'clover') {
+      const clusters = 1 + randInt(rng, 0, 2);
+      for (let i = 0; i < clusters; i++) {
+        cloverCluster(out, spec, randInt(rng, 4, spec.width - 5), randInt(rng, 5, spec.height - 5));
+      }
+      return out;
+    }
+    const sparkle = 2 + randInt(rng, 0, 3);
+    for (let i = 0; i < sparkle; i++) {
+      const x = randInt(rng, 3, spec.width - 4);
+      const y = randInt(rng, 1, Math.max(2, baseY + 1));
+      const color = rng() > 0.6 ? 'petalLight' : (rng() > 0.25 ? 'petal' : 'center');
+      dot(out, spec, x, y, color);
+      if (rng() > 0.72) dot(out, spec, x + 1, y + 1, 'shadow');
+    }
+    if (rng() > 0.52) {
+      const x = randInt(rng, 4, spec.width - 5);
+      const top = randInt(rng, Math.max(2, baseY - 6), Math.max(2, baseY - 3));
+      plantStem(out, spec, x, top, baseY + 2, randInt(rng, -1, 1));
+      if (spec.shape === 'dahlias') dahliaBloom(out, spec, x, top, 1);
+      else if (spec.shape === 'lupine') lupineSpike(out, spec, x, top - 1, 5);
+      else if (spec.shape === 'amaranth') amaranthPlume(out, spec, x, top - 1, 5);
+      else daisyBloom(out, spec, x, top);
+    }
+    return out;
+  }
+
+  function cellsFor(spec, seed) {
+    return addFlowerVariation(baseCellsFor(spec), spec, seed);
+  }
+
   class FlowerCatalog {
     constructor(specs) {
       this._specs = specs.slice();
@@ -359,19 +426,22 @@
       };
     }
 
-    render(id) {
+    render(id, opts) {
       const el = document.createElement('span');
-      return this.paint(el, id);
+      return this.paint(el, id, opts);
     }
 
-    paint(el, id) {
+    paint(el, id, opts) {
+      opts = opts || {};
       const spec = this.get(id);
+      const seed = opts.seed || opts.variant || '';
       el.className = (el.className || '')
         .split(/\s+/)
         .filter(function (name) { return name && name !== 'pixel-flower-art' && name.indexOf('pixel-flower-') !== 0; })
         .concat(['pixel-flower-art', 'pixel-flower-' + spec.id])
         .join(' ');
       el.dataset.flowerType = spec.id;
+      el.dataset.flowerSeed = seed;
       el.style.setProperty('--flower-w', spec.width);
       el.style.setProperty('--flower-h', spec.height);
       el.style.setProperty('--flower-aspect', spec.width / spec.height);
@@ -380,7 +450,7 @@
       inner.className = 'pixel-flower-inner';
       inner.style.setProperty('--flower-w', spec.width);
       inner.style.setProperty('--flower-h', spec.height);
-      cellsFor(spec).forEach(function (cell) {
+      cellsFor(spec, seed).forEach(function (cell) {
         const px = document.createElement('span');
         px.className = 'pixel-flower-cell';
         px.style.gridColumn = String(cell.x + 1);

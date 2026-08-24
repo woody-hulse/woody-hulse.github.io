@@ -45,6 +45,7 @@ const TROUGH_GRID_W = 22;
 const TROUGH_GRID_H = 12;
 const TROUGH_HEIGHT_VW = 1.56;
 const TROUGH_ASPECT = TROUGH_GRID_W / TROUGH_GRID_H;
+const TROUGH_REFILL_MS = 30 * 60 * 1000;
 const COOP_GRID_W = 18;
 const COOP_GRID_H = 16;
 const COOP_HEIGHT_VW = 2.35;
@@ -88,6 +89,20 @@ function _fitSpriteToSize(img, sizeVw) {
 function _randomChoice(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
+
+function _clamp01(n) {
+  n = Number(n);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+function troughFullness(tr, now) {
+  now = Number(now) || Date.now();
+  const filledAt = Number(tr && tr.filledAt) || 0;
+  if (!filledAt || filledAt > now + 60000) return 0;
+  return _clamp01(1 - ((now - filledAt) / TROUGH_REFILL_MS));
+}
+if (typeof window !== 'undefined') window.troughFullness = troughFullness;
 
 async function setSpinnerImage(imgEl) {
   if (imgEl && window.PixelSprites && window.PixelSprites.paintAnimal) {
@@ -391,7 +406,13 @@ function sortFieldByY(containerEl, opts) {
     return ay - by;
   });
   nodes.forEach(function (node, i) {
-    node.style.zIndex = String(10 + i);
+    let layer = 10 + i;
+    if (node.classList && node.classList.contains('pen-fence')) {
+      const side = node.dataset.side;
+      if (side === 'bottom') layer += 6;
+      else if (side === 'left' || side === 'right') layer += 2;
+    }
+    node.style.zIndex = String(layer);
   });
   if (opts.updateChips !== false) requestPenBoostChipUpdate(containerEl);
 }
@@ -791,13 +812,12 @@ function _endFieldDrag(save) {
       const state = _penTroughLookup() || {};
       const troughs = (state.troughs || []).map(function (tr) {
         if (tr.id !== drag.id) return tr;
-        return {
-          id: tr.id,
+        return Object.assign({}, tr, {
           leftVw: _pxToCanX(_cssLengthToPx(drag.el.style.left), drag.widthPx),
           topVh: _pxToVh(_cssLengthToPx(drag.el.style.top)),
           heightVw: parseFloat(drag.el.dataset.sizeVw) || parseFloat(drag.el.style.height) || tr.heightVw,
           paid: tr.paid
-        };
+        });
       });
       _onTroughsChange(troughs);
     }
@@ -1160,7 +1180,8 @@ function _addRect(cells, x, y, w, h, color) {
   }
 }
 
-function _troughCells() {
+function _troughCells(fullness) {
+  fullness = _clamp01(fullness == null ? 1 : fullness);
   const cells = [];
   _addRect(cells, 4, 9, 4, 2, '--pixel-wood-dark');
   _addRect(cells, 15, 9, 4, 2, '--pixel-wood-dark');
@@ -1168,8 +1189,13 @@ function _troughCells() {
   _addRect(cells, 16, 10, 2, 1, '--pixel-line');
   _addRect(cells, 2, 4, 18, 2, '--pixel-line');
   _addRect(cells, 3, 3, 16, 1, '--pixel-wood-light');
-  _addRect(cells, 4, 4, 14, 1, '--pixel-water');
-  _addRect(cells, 7, 4, 5, 1, '#9fd6e3');
+  const waterW = Math.round(14 * fullness);
+  if (waterW > 0) {
+    _addRect(cells, 4, 4, waterW, 1, '--pixel-water');
+    _addRect(cells, 7, 4, Math.max(0, Math.min(5, waterW - 3)), 1, '#9fd6e3');
+  } else {
+    _addRect(cells, 4, 4, 14, 1, 'rgba(60, 35, 21, 0.3)');
+  }
   _addRect(cells, 2, 6, 18, 4, '--pixel-line');
   _addRect(cells, 3, 6, 16, 1, '--pixel-wood-light');
   _addRect(cells, 3, 7, 16, 2, '--pixel-wood');
@@ -1184,9 +1210,9 @@ function _troughCells() {
   return cells;
 }
 
-function _troughSvg() {
+function _troughSvg(fullness) {
   const parts = ['<span class="pixel-trough-art" aria-hidden="true" style="--trough-w:' + TROUGH_GRID_W + ';--trough-h:' + TROUGH_GRID_H + '">'];
-  _troughCells().forEach(function (cell) {
+  _troughCells(fullness).forEach(function (cell) {
     parts.push(
       '<span class="pixel-trough-cell" style="grid-column:' + (cell.x + 1) +
       ';grid-row:' + (cell.y + 1) + ';background:' + _cellStyle(cell.color) + '"></span>'
@@ -1251,9 +1277,9 @@ function _flowerSize(type) {
   };
 }
 
-function _paintFlower(el, type) {
+function _paintFlower(el, type, seed) {
   if (window.StudyFlowers && window.StudyFlowers.paint) {
-    window.StudyFlowers.paint(el, type);
+    window.StudyFlowers.paint(el, type, seed ? { seed: seed } : null);
   } else {
     el.textContent = '*';
   }
@@ -1524,7 +1550,7 @@ function startTroughPlacement(containerEl, trough, opts) {
   preview.className = 'trough-object field-object';
   preview.style.height = heightVw + 'vw';
   preview.style.width = (heightVw * TROUGH_ASPECT) + 'vw';
-  preview.innerHTML = _troughSvg();
+  preview.innerHTML = _troughSvg(1);
   return _startStorePlacement({
     preview: preview,
     heightVw: heightVw,
@@ -1534,7 +1560,7 @@ function startTroughPlacement(containerEl, trough, opts) {
     priceText: opts.priceText,
     onConfirm: opts.onConfirm,
     onCancel: opts.onCancel,
-    payload: { id: trough && trough.id, paid: trough && trough.paid }
+    payload: { id: trough && trough.id, paid: trough && trough.paid, filledAt: trough && trough.filledAt }
   });
 }
 
@@ -1571,7 +1597,7 @@ function startFlowerPlacement(containerEl, flower, opts) {
   preview.className = 'flower-object field-object';
   preview.style.height = heightVw + 'vw';
   preview.style.width = (heightVw * (size.aspect || FLOWER_FALLBACK_ASPECT)) + 'vw';
-  _paintFlower(preview, flower.type);
+  _paintFlower(preview, flower.type, flower.seed);
   return _startStorePlacement({
     preview: preview,
     heightVw: heightVw,
@@ -1607,9 +1633,9 @@ function _applyPenRect(container, pen, opts) {
   const railPx = _vwToPx(FENCE_H_VW);
   const sides = [
     { side: 'top', left: leftVw, top: topVh, width: widthVw, height: FENCE_H_VW },
-    { side: 'bottom', left: leftVw, top: topVh + heightVh - thickVh, width: widthVw, height: FENCE_H_VW },
     { side: 'left', left: leftVw, top: topVh, width: FENCE_V_VW, heightVh: heightVh },
-    { side: 'right', left: leftVw + widthVw - FENCE_V_VW, top: topVh, width: FENCE_V_VW, heightVh: heightVh }
+    { side: 'right', left: leftVw + widthVw - FENCE_V_VW, top: topVh, width: FENCE_V_VW, heightVh: heightVh },
+    { side: 'bottom', left: leftVw, top: topVh + heightVh - thickVh, width: widthVw, height: FENCE_H_VW }
   ];
   sides.forEach(function (s) {
     let el = map[s.side];
@@ -1654,13 +1680,16 @@ function renderPensAndTroughs(containerEl) {
     el.className = 'trough-object field-object';
     el.dataset.kind = 'trough';
     el.dataset.id = tr.id;
+    const fullness = troughFullness(tr);
+    el.dataset.fullness = String(Math.round(fullness * 100));
+    el.classList.toggle('needs-refill', fullness <= 0.05);
     const hVw = (typeof tr.heightVw === 'number' && tr.heightVw <= 2.2) ? tr.heightVw : TROUGH_HEIGHT_VW;
     const wPx = _vwToPx(hVw * TROUGH_ASPECT);
     el.style.left = _pxToVw(_canXToPx(tr.leftVw, wPx)) + 'vw';
     el.style.top = tr.topVh + 'vh';
     el.style.height = hVw + 'vw';
     el.style.width = (hVw * TROUGH_ASPECT) + 'vw';
-    el.innerHTML = _troughSvg();
+    el.innerHTML = _troughSvg(fullness);
     containerEl.appendChild(el);
   });
   (state.coops || []).forEach(function (coop) {
@@ -1693,7 +1722,7 @@ function renderPensAndTroughs(containerEl) {
     el.style.top = fl.topVh + 'vh';
     el.style.height = hVw + 'vw';
     el.style.width = (hVw * aspect) + 'vw';
-    _paintFlower(el, fl.type);
+    _paintFlower(el, fl.type, fl.id);
     containerEl.appendChild(el);
   });
   sortFieldByY(containerEl);
@@ -1706,7 +1735,8 @@ function pointInPenPx(x, y, pen) {
 
 function troughWeight(T) {
   // w(1)=1, w(2)=1.25, w(3)=1.375, … → 1.5
-  if (T < 1) return 0;
+  if (T <= 0) return 0;
+  if (T < 1) return T;
   return 1 + 0.5 * (1 - Math.pow(0.5, T - 1));
 }
 
@@ -1740,9 +1770,10 @@ function _coopCenterPx(coop) {
 
 function _troughCountInPen(pen, troughs) {
   let T = 0;
+  const now = Date.now();
   (troughs || []).forEach(function (tr) {
     const c = _troughCenterPx(tr);
-    if (pointInPenPx(c.x, c.y, pen)) T += 1;
+    if (pointInPenPx(c.x, c.y, pen)) T += troughFullness(tr, now);
   });
   return T;
 }
@@ -1886,6 +1917,7 @@ function removeFlower(containerEl, flowerId) {
 }
 
 function addTroughAtDefault(containerEl, trough) {
+  trough = trough || {};
   const rng = _mulberry32((Date.now() ^ 0x9e3779b9) >>> 0);
   const heightVw = TROUGH_HEIGHT_VW;
   const sizePx = _vwToPx(heightVw);
@@ -1893,6 +1925,7 @@ function addTroughAtDefault(containerEl, trough) {
   trough.leftVw = pos.leftVw;
   trough.topVh = pos.topVh;
   trough.heightVw = heightVw;
+  if (!trough.filledAt) trough.filledAt = Date.now();
   const state = _penTroughLookup() || {};
   const troughs = (state.troughs || []).concat([trough]);
   if (_onTroughsChange) _onTroughsChange(troughs);

@@ -32,6 +32,7 @@
   let passiveIncomeWasVisible = !document.hidden;
   let passiveIncomeLastPersistAt = 0;
   let coopEggLastPersistAt = 0;
+  let storeBuyQuantity = 1;
   let ratingBusy = false;
   let deferredFlushTimer = null;
   let layoutViewportKey = '';
@@ -244,6 +245,7 @@
     els.storeFarmList = document.getElementById('store-farm-list');
     els.storeAnimalsLabel = document.getElementById('store-animals-label');
     els.storeFarmLabel = document.getElementById('store-farm-label');
+    els.storeQuantityToggle = document.getElementById('store-quantity-toggle');
 
     // ---- Naists tab ----
     els.naistsBreadcrumb = document.getElementById('naists-breadcrumb');
@@ -627,6 +629,7 @@
     bindPixelModal();
     bindAnimalSell();
     bindAnimalNames();
+    bindFarmObjectInteractions();
     bindPassiveIncome();
     setAnimalPlacementHooks(
       function () { return economy.animalPlacements || {}; },
@@ -814,6 +817,7 @@
         state.totalEarned = Math.round(((state.totalEarned || 0) + accrual.amount) * 100) / 100;
         state.lastClaimedAt = now;
         state.lastClaimedAmount = accrual.amount;
+        showMoneyFloat(accrual.amount, opts.source || null);
       } else {
         state.lastClaimedAt = 0;
         state.lastClaimedAmount = 0;
@@ -899,6 +903,24 @@
     }, 0);
   }
 
+  function coopEggDisplayTotal() {
+    return (economy.coops || []).reduce(function (total, coop) {
+      return total + coopEggDisplayCount(coop);
+    }, 0);
+  }
+
+  function coopEggDisplayCount(coop) {
+    const saved = Number(coop && coop.eggCount);
+    if (Number.isFinite(saved) && saved > 0) return Math.floor(saved);
+    const value = Number(coop && coop.eggValue) || 0;
+    return value > 0 ? Math.max(1, Math.round(value)) : 0;
+  }
+
+  function eggCountLabel(count) {
+    count = Math.max(0, Math.floor(Number(count) || 0));
+    return count === 1 ? t('oneEgg') : t('nEggs', { n: count });
+  }
+
   function coopHourlyTotal() {
     return (economy.coops || []).reduce(function (total, coop) {
       return total + coopHourlyValue(coop);
@@ -948,6 +970,37 @@
     if (els.bucksValue) els.bucksValue.textContent = formatCurrency(economy.bucks);
   }
 
+  function moneyFloatOrigin(source) {
+    if (source && Number.isFinite(source.clientX) && Number.isFinite(source.clientY)) {
+      return { x: source.clientX, y: source.clientY };
+    }
+    if (source && source.getBoundingClientRect) {
+      const sr = source.getBoundingClientRect();
+      return { x: sr.left + sr.width / 2, y: sr.top + sr.height / 2 };
+    }
+    const el = els.bucksValue || document.getElementById('bucks-display');
+    if (el && el.getBoundingClientRect) {
+      const r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }
+    return { x: Math.max(20, window.innerWidth - 80), y: 72 };
+  }
+
+  function showMoneyFloat(amount, source) {
+    amount = Number(amount) || 0;
+    if (amount <= 0 || document.documentElement.classList.contains('focus-mode')) return;
+    const origin = moneyFloatOrigin(source);
+    const el = document.createElement('div');
+    el.className = 'money-float';
+    el.textContent = '+' + formatCurrency(amount);
+    el.style.left = origin.x + 'px';
+    el.style.top = origin.y + 'px';
+    document.body.appendChild(el);
+    window.setTimeout(function () {
+      if (el.parentNode) el.parentNode.removeChild(el);
+    }, 1200);
+  }
+
   function rewardLedger() {
     if (!economy.rewardLedger || typeof economy.rewardLedger !== 'object' || Array.isArray(economy.rewardLedger)) {
       economy.rewardLedger = { paid: {} };
@@ -985,6 +1038,7 @@
     await accrueCoopEggs({ reason: 'before mutation', renderStore: false, flush: false });
     const earned = bucksPerRating(economy.animals);
     economy.bucks = Math.round((economy.bucks + earned) * 100) / 100;
+    showMoneyFloat(earned, null);
     ledger.paid[key] = true;
     if (logEntry) {
       logEntry.rewardKey = key;
@@ -4103,7 +4157,145 @@
     }, true);
   }
 
+  let _farmObjectTip = null;
+
+  function ensureFarmObjectTip() {
+    if (_farmObjectTip) return _farmObjectTip;
+    _farmObjectTip = document.createElement('div');
+    _farmObjectTip.className = 'animal-name-tip farm-object-tip';
+    _farmObjectTip.hidden = true;
+    document.body.appendChild(_farmObjectTip);
+    return _farmObjectTip;
+  }
+
+  function hideFarmObjectTip() {
+    if (_farmObjectTip) _farmObjectTip.hidden = true;
+  }
+
+  function farmObjectInteractionBlocked(target) {
+    if (!els.pigField || els.pigField.classList.contains('sell-mode')) return true;
+    if (isSleepFocusActive()) return true;
+    if (activeTabName() === 'store') return true;
+    if (els.app && els.app.hidden) return true;
+    if (_storePlacingActive()) return true;
+    if (!target || !target.closest) return false;
+    if (target.closest('#top-nav, #tab-row, #tab-nav, #auth-screen, .overlay-card, #shortcuts-overlay, #new-deck-overlay, #text-prompt-overlay, #pixel-modal-overlay, #animal-detail-overlay, #settings-overlay, #loading-overlay, #pig-encouragement-overlay, button, a, input, textarea, select, label')) return true;
+    return !document.documentElement.classList.contains('farm-tab') && !!target.closest('#main-content');
+  }
+
+  function fieldObjectAtPoint(selector, x, y) {
+    if (!els.pigField) return null;
+    let hit = null;
+    Array.prototype.forEach.call(els.pigField.querySelectorAll(selector), function (node) {
+      const r = node.getBoundingClientRect();
+      const pad = 8;
+      if (x >= r.left - pad && x <= r.right + pad && y >= r.top - pad && y <= r.bottom + pad) hit = node;
+    });
+    return hit;
+  }
+
+  function troughFullnessValue(tr) {
+    if (typeof window.troughFullness === 'function') return window.troughFullness(tr);
+    const filledAt = Number(tr && tr.filledAt) || 0;
+    if (!filledAt) return 0;
+    return Math.max(0, Math.min(1, 1 - ((Date.now() - filledAt) / (30 * 60 * 1000))));
+  }
+
+  function farmObjectTipText(node) {
+    if (!node) return '';
+    if (node.classList.contains('trough-object')) {
+      const tr = (economy.troughs || []).find(function (item) { return item.id === node.dataset.id; });
+      const pct = Math.round(troughFullnessValue(tr) * 100);
+      return t('troughFullness', { pct: pct });
+    }
+    if (node.classList.contains('coop-object')) {
+      const coop = (economy.coops || []).find(function (item) { return item.id === node.dataset.id; });
+      const eggs = Math.round(((coop && coop.eggValue) || 0) * 100) / 100;
+      if (eggs > 0) return t('coopEggHover', { eggs: eggCountLabel(coopEggDisplayCount(coop)), price: formatCurrency(eggs) });
+      return t('coopEggEmpty');
+    }
+    return '';
+  }
+
+  async function refillTrough(troughId) {
+    if (!troughId || isSleepFocusActive()) return;
+    let changed = false;
+    economy.troughs = (economy.troughs || []).map(function (tr) {
+      if (tr.id !== troughId) return tr;
+      changed = true;
+      return Object.assign({}, tr, { filledAt: Date.now() });
+    });
+    if (!changed) return;
+    await persistEconomy();
+    renderPensAndTroughs(els.pigField);
+    refreshStoreAffordances();
+  }
+
+  function bindFarmObjectInteractions() {
+    if (!els.pigField || els.pigField.dataset.objectInteractionsBound) return;
+    els.pigField.dataset.objectInteractionsBound = '1';
+    window.addEventListener('pointermove', function (e) {
+      if (farmObjectInteractionBlocked(e.target) || window.StudyFieldGestureMoved || hitAnimalForEvent(e)) {
+        hideFarmObjectTip();
+        return;
+      }
+      const node = fieldObjectAtPoint('.trough-object, .coop-object', e.clientX, e.clientY);
+      const text = farmObjectTipText(node);
+      if (!node || !text) {
+        hideFarmObjectTip();
+        return;
+      }
+      const tip = ensureFarmObjectTip();
+      tip.textContent = text;
+      tip.hidden = false;
+      const pad = 12;
+      const tw = tip.offsetWidth || 120;
+      const th = tip.offsetHeight || 24;
+      let x = e.clientX + pad;
+      let y = e.clientY - th - pad;
+      if (x + tw > window.innerWidth - 8) x = e.clientX - tw - pad;
+      if (x < 8) x = 8;
+      if (y < 8) y = e.clientY + pad;
+      if (y + th > window.innerHeight - 8) y = window.innerHeight - th - 8;
+      tip.style.left = x + 'px';
+      tip.style.top = y + 'px';
+    }, { passive: true });
+    window.addEventListener('pointerdown', hideFarmObjectTip, { capture: true, passive: true });
+    window.addEventListener('click', function (e) {
+      if (farmObjectInteractionBlocked(e.target) || window.StudyFieldGestureMoved || hitAnimalForEvent(e)) return;
+      const node = fieldObjectAtPoint('.trough-object, .coop-object', e.clientX, e.clientY);
+      if (!node) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (node.classList.contains('trough-object')) {
+        refillTrough(node.dataset.id);
+      } else if (node.classList.contains('coop-object')) {
+        sellCoopEggs(node.dataset.id, e);
+      }
+      hideFarmObjectTip();
+    }, true);
+  }
+
+  function syncStoreQuantityToggle() {
+    if (!els.storeQuantityToggle) return;
+    Array.prototype.forEach.call(els.storeQuantityToggle.querySelectorAll('[data-store-qty]'), function (btn) {
+      const active = Number(btn.dataset.storeQty) === storeBuyQuantity;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
   function bindStoreView() {
+    if (!els.storeQuantityToggle || els.storeQuantityToggle.dataset.bound) return;
+    els.storeQuantityToggle.dataset.bound = '1';
+    els.storeQuantityToggle.addEventListener('click', function (e) {
+      const btn = e.target.closest && e.target.closest('[data-store-qty]');
+      if (!btn) return;
+      const qty = Number(btn.dataset.storeQty);
+      storeBuyQuantity = qty === 10 ? 10 : 1;
+      syncStoreQuantityToggle();
+      renderStore();
+    });
   }
 
   function fillPixelThumb(container, kind, name, opts) {
@@ -4179,12 +4371,6 @@
       btn.disabled = disabled;
       btn.title = disabled ? t('notEnoughBucks') : '';
     });
-    Array.prototype.forEach.call(els.views.store.querySelectorAll('[data-coop-eggs-action]'), function (btn) {
-      const eggs = Math.round(coopEggValue() * 100) / 100;
-      btn.textContent = t('sellEggsPrice', { price: formatCurrency(eggs) });
-      btn.disabled = eggs <= 0;
-      btn.title = eggs <= 0 ? t('coopIdle') : '';
-    });
   }
 
   function normalizePlacementBatch(payload, quantity) {
@@ -4199,6 +4385,7 @@
   async function renderStore() {
     await accrueCoopEggs({ reason: 'store render', renderStore: false, flush: false });
     updateBucksDisplay();
+    syncStoreQuantityToggle();
     const active = (els.tabBtns || []).find(function (b) { return b.classList.contains('active'); });
     applySellMode(!isSleepFocusActive() && sellModeForTab(active ? active.dataset.tab : 'store'));
     updateStoreSectionLabels();
@@ -4238,16 +4425,16 @@
       const actions = document.createElement('div');
       actions.className = 'store-row-actions';
       if (visibility.tier === 'visible') {
-        const priceTen = storeBatchPrice(price, 10);
-        actions.appendChild(storeBuyButton('buyOnePrice', price, economy.bucks < price, '', function (e) { buyAnimal(spec.id, e, 1); }));
-        actions.appendChild(storeBuyButton('buyTenPrice', priceTen, economy.bucks < priceTen, '', function (e) { buyAnimal(spec.id, e, 10); }));
+        const qty = storeBuyQuantity === 10 ? 10 : 1;
+        const batchPrice = storeBatchPrice(price, qty);
+        actions.appendChild(storeBuyButton('buyPrice', batchPrice, economy.bucks < batchPrice, '', function (e) { buyAnimal(spec.id, e, qty); }));
       } else {
         const locked = document.createElement('button');
         locked.type = 'button';
         locked.className = 'secondary-btn store-buy-btn';
         locked.textContent = visibility.tier === 'hidden'
-          ? t('buyOneUnknownPrice')
-          : t('buyOnePrice', { price: formatCurrency(price) });
+          ? t('buyUnknownPrice')
+          : t('buyPrice', { price: formatCurrency(storeBatchPrice(price, storeBuyQuantity)) });
         locked.disabled = true;
         locked.title = t('animalLockedHint');
         actions.appendChild(locked);
@@ -4267,6 +4454,7 @@
       const troughPrice = troughBuyPrice();
       const coopPrice = coopBuyPrice();
       const eggs = Math.round(coopEggValue() * 100) / 100;
+      const eggLabel = eggCountLabel(coopEggDisplayTotal());
       const eggHourly = Math.round(coopHourlyTotal() * 100) / 100;
 
       function farmRow(name, meta, icon, actionsBuilder, opts) {
@@ -4308,19 +4496,10 @@
       );
       farmRow(
         t('coop'),
-        t('coopMeta', { eggs: formatCurrency(eggs), rate: formatCurrency(eggHourly) }),
+        t('coopMeta', { eggs: eggLabel, price: formatCurrency(eggs), rate: formatCurrency(eggHourly) }),
         'coop',
         function (actions) {
-          const sellEggs = document.createElement('button');
-          sellEggs.type = 'button';
-          sellEggs.className = 'secondary-btn store-sell-eggs-btn';
-          sellEggs.dataset.coopEggsAction = '1';
-          sellEggs.textContent = t('sellEggsPrice', { price: formatCurrency(eggs) });
-          sellEggs.disabled = eggs <= 0;
-          sellEggs.title = eggs <= 0 ? t('coopIdle') : '';
-          sellEggs.addEventListener('click', function () { sellCoopEggs(); });
           actions.appendChild(storeBuyButton('buyPrice', coopPrice, economy.bucks < coopPrice, '', function (e) { buyCoop(e); }));
-          actions.appendChild(sellEggs);
         },
         { owned: coopCount }
       );
@@ -4334,14 +4513,14 @@
         flowers.forEach(function (spec) {
           const owned = flowerOwnedCount(spec.id);
           const price = flowerPrice(spec.id, owned);
-          const priceTen = storeBatchPrice(price, 10);
           farmRow(
             t(spec.nameKey),
             t('flowerMeta', { bonus: formatBonus(spec.bonus) }),
             '',
             function (actions) {
-              actions.appendChild(storeBuyButton('buyOnePrice', price, economy.bucks < price, '', function (e) { buyFlower(spec.id, e, 1); }));
-              actions.appendChild(storeBuyButton('buyTenPrice', priceTen, economy.bucks < priceTen, '', function (e) { buyFlower(spec.id, e, 10); }));
+              const qty = storeBuyQuantity === 10 ? 10 : 1;
+              const batchPrice = storeBatchPrice(price, qty);
+              actions.appendChild(storeBuyButton('buyPrice', batchPrice, economy.bucks < batchPrice, '', function (e) { buyFlower(spec.id, e, qty); }));
             },
             { flowerType: spec.id, owned: owned, ownedLabel: t('planted') }
           );
@@ -4366,6 +4545,7 @@
     if (isCompactLayout()) switchTab('farm');
     const started = typeof startAnimalPlacement === 'function' && startAnimalPlacement(els.pigField, speciesId, nextIndex, {
       quantity: quantity,
+      batchRadiusPx: quantity > 1 ? 36 : undefined,
       clientX: event && event.clientX,
       clientY: event && event.clientY,
       banner: t('placeStoreItem', { name: quantity > 1 ? t('storeItemQuantity', { n: quantity, name: name }) : name }),
@@ -4430,7 +4610,7 @@
     const price = troughBuyPrice();
     if (economy.bucks < price) return;
     if (isCompactLayout()) switchTab('farm');
-    const trough = { id: generateId(), paid: price };
+    const trough = { id: generateId(), paid: price, filledAt: Date.now() };
     const started = typeof startTroughPlacement === 'function' && startTroughPlacement(els.pigField, trough, {
       clientX: event && event.clientX,
       clientY: event && event.clientY,
@@ -4491,6 +4671,7 @@
     const started = typeof startFlowerPlacement === 'function' && startFlowerPlacement(els.pigField, flower, {
       quantity: quantity,
       dragToPlace: quantity > 1,
+      batchRadiusPx: quantity > 1 ? 30 : undefined,
       clientX: event && event.clientX,
       clientY: event && event.clientY,
       banner: t('placeStoreItem', { name: quantity > 1 ? t('storeItemQuantity', { n: quantity, name: t(spec.nameKey) }) : t(spec.nameKey) }),
@@ -4520,6 +4701,7 @@
     if (!pen) return;
     const refund = Math.round((pen.paid || 0) * 0.5 * 100) / 100;
     economy.bucks = Math.round((economy.bucks + refund) * 100) / 100;
+    showMoneyFloat(refund, null);
     removePen(els.pigField, penId);
     await persistEconomy();
     await renderStore();
@@ -4533,6 +4715,7 @@
     if (!tr) return;
     const refund = Math.round((tr.paid || 0) * 0.5 * 100) / 100;
     economy.bucks = Math.round((economy.bucks + refund) * 100) / 100;
+    showMoneyFloat(refund, null);
     removeTrough(els.pigField, troughId);
     await persistEconomy();
     await renderStore();
@@ -4547,21 +4730,26 @@
     const refund = Math.round((coop.paid || 0) * 0.5 * 100) / 100;
     const eggs = Math.round((coop.eggValue || 0) * 100) / 100;
     economy.bucks = Math.round((economy.bucks + refund + eggs) * 100) / 100;
+    showMoneyFloat(refund + eggs, null);
     if (typeof removeCoop === 'function') removeCoop(els.pigField, coopId);
     await persistEconomy();
     await renderStore();
   }
 
-  async function sellCoopEggs() {
+  async function sellCoopEggs(coopId, source) {
     if (isSleepFocusActive()) return;
     await accruePassiveIncome({ reason: 'before sell eggs', renderStore: false });
     await accrueCoopEggs({ reason: 'before mutation', renderStore: false, flush: false });
-    const eggs = Math.round(coopEggValue() * 100) / 100;
+    const eggs = Math.round((coopId
+      ? ((economy.coops || []).find(function (coop) { return coop.id === coopId; }) || {}).eggValue
+      : coopEggValue()) * 100) / 100;
     if (eggs <= 0) return;
     economy.bucks = Math.round((economy.bucks + eggs) * 100) / 100;
     economy.coops = (economy.coops || []).map(function (coop) {
-      return Object.assign({}, coop, { eggValue: 0 });
+      if (coopId && coop.id !== coopId) return coop;
+      return Object.assign({}, coop, { eggValue: 0, eggCount: 0 });
     });
+    showMoneyFloat(eggs, source || null);
     await persistEconomy();
     await renderStore();
   }
@@ -4574,6 +4762,7 @@
     if (!fl) return;
     const refund = Math.round((fl.paid || 0) * 0.5 * 100) / 100;
     economy.bucks = Math.round((economy.bucks + refund) * 100) / 100;
+    showMoneyFloat(refund, null);
     if (typeof removeFlower === 'function') removeFlower(els.pigField, flowerId);
     await persistEconomy();
     await renderStore();
@@ -4590,6 +4779,7 @@
     const removedIndex = Number(parts[1]);
     economy.animals[speciesId] = owned - 1;
     economy.bucks = Math.round((economy.bucks + refund) * 100) / 100;
+    showMoneyFloat(refund, null);
     if (Number.isInteger(removedIndex)) {
       economy.animalNames = compactAnimalNames(economy.animalNames, speciesId, removedIndex);
       economy.animalHappiness = compactAnimalHappiness(economy.animalHappiness, speciesId, removedIndex);
