@@ -981,7 +981,7 @@
     const el = els.bucksValue || document.getElementById('bucks-display');
     if (el && el.getBoundingClientRect) {
       const r = el.getBoundingClientRect();
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      return { x: Math.min(window.innerWidth - 28, r.right + 32), y: r.top + r.height / 2 };
     }
     return { x: Math.max(20, window.innerWidth - 80), y: 72 };
   }
@@ -3921,19 +3921,37 @@
     return !!document.querySelector('.store-place-preview');
   }
 
-  function animalNameInteractionBlocked(target) {
+  function clientXInFarmArea(clientX) {
+    if (isCompactLayout()) return document.documentElement.classList.contains('farm-tab');
+    const x = Number(clientX);
+    if (!Number.isFinite(x)) return true;
+    const root = document.documentElement;
+    const vw = root.clientWidth || window.innerWidth || 1;
+    const raw = getComputedStyle(root).getPropertyValue('--content-width');
+    const contentW = Number.parseFloat(raw) || 640;
+    const gutter = Math.max(12, (vw - contentW) / 2);
+    const gapLeft = gutter;
+    const gapRight = vw - gutter;
+    return x < gapLeft || x > gapRight;
+  }
+
+  function farmPointerInteractionBlocked(target, clientX) {
     if (!els.pigField || els.pigField.classList.contains('sell-mode')) return true;
     if (isSleepFocusActive()) return true;
     if (activeTabName() === 'store') return true;
     if (els.app && els.app.hidden) return true;
     if (_storePlacingActive()) return true;
-    if (!target || !target.closest) return false;
+    if (!target || !target.closest) return !clientXInFarmArea(clientX);
     if (target.closest('#top-nav, #tab-row, #tab-nav, #auth-screen, .overlay-card, #shortcuts-overlay, #new-deck-overlay, #text-prompt-overlay, #pixel-modal-overlay, #animal-detail-overlay, #settings-overlay, #loading-overlay, #pig-encouragement-overlay, button, a, input, textarea, select, label')) return true;
-    return !document.documentElement.classList.contains('farm-tab') && !!target.closest('#main-content');
+    return !clientXInFarmArea(clientX);
+  }
+
+  function animalNameInteractionBlocked(target, clientX) {
+    return farmPointerInteractionBlocked(target, clientX);
   }
 
   function hitAnimalForEvent(e) {
-    if (!e || animalNameInteractionBlocked(e.target)) return null;
+    if (!e || animalNameInteractionBlocked(e.target, e.clientX)) return null;
     if (typeof fieldAnimalAtPoint !== 'function') return null;
     return fieldAnimalAtPoint(e.clientX, e.clientY);
   }
@@ -4172,15 +4190,8 @@
     if (_farmObjectTip) _farmObjectTip.hidden = true;
   }
 
-  function farmObjectInteractionBlocked(target) {
-    if (!els.pigField || els.pigField.classList.contains('sell-mode')) return true;
-    if (isSleepFocusActive()) return true;
-    if (activeTabName() === 'store') return true;
-    if (els.app && els.app.hidden) return true;
-    if (_storePlacingActive()) return true;
-    if (!target || !target.closest) return false;
-    if (target.closest('#top-nav, #tab-row, #tab-nav, #auth-screen, .overlay-card, #shortcuts-overlay, #new-deck-overlay, #text-prompt-overlay, #pixel-modal-overlay, #animal-detail-overlay, #settings-overlay, #loading-overlay, #pig-encouragement-overlay, button, a, input, textarea, select, label')) return true;
-    return !document.documentElement.classList.contains('farm-tab') && !!target.closest('#main-content');
+  function farmObjectInteractionBlocked(target, clientX) {
+    return farmPointerInteractionBlocked(target, clientX);
   }
 
   function fieldObjectAtPoint(selector, x, y) {
@@ -4214,6 +4225,11 @@
       if (eggs > 0) return t('coopEggHover', { eggs: eggCountLabel(coopEggDisplayCount(coop)), price: formatCurrency(eggs) });
       return t('coopEggEmpty');
     }
+    if (node.classList.contains('flower-object')) {
+      const spec = flowerSpec(node.dataset.flowerType);
+      if (!spec) return '';
+      return t(spec.nameKey) + ' · ' + formatBonus(spec.bonus);
+    }
     return '';
   }
 
@@ -4235,11 +4251,11 @@
     if (!els.pigField || els.pigField.dataset.objectInteractionsBound) return;
     els.pigField.dataset.objectInteractionsBound = '1';
     window.addEventListener('pointermove', function (e) {
-      if (farmObjectInteractionBlocked(e.target) || window.StudyFieldGestureMoved || hitAnimalForEvent(e)) {
+      if (farmObjectInteractionBlocked(e.target, e.clientX) || window.StudyFieldGestureMoved || hitAnimalForEvent(e)) {
         hideFarmObjectTip();
         return;
       }
-      const node = fieldObjectAtPoint('.trough-object, .coop-object', e.clientX, e.clientY);
+      const node = fieldObjectAtPoint('.trough-object, .coop-object, .flower-object', e.clientX, e.clientY);
       const text = farmObjectTipText(node);
       if (!node || !text) {
         hideFarmObjectTip();
@@ -4262,7 +4278,7 @@
     }, { passive: true });
     window.addEventListener('pointerdown', hideFarmObjectTip, { capture: true, passive: true });
     window.addEventListener('click', function (e) {
-      if (farmObjectInteractionBlocked(e.target) || window.StudyFieldGestureMoved || hitAnimalForEvent(e)) return;
+      if (farmObjectInteractionBlocked(e.target, e.clientX) || window.StudyFieldGestureMoved || hitAnimalForEvent(e)) return;
       const node = fieldObjectAtPoint('.trough-object, .coop-object', e.clientX, e.clientY);
       if (!node) return;
       e.preventDefault();

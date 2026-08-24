@@ -1135,8 +1135,9 @@ function _hFenceSvg(lengthVw) {
   [34, 68].forEach(function (y, i) {
     parts.push('<span class="pixel-fence-rail rail-' + i + '" style="top:' + y + '%"></span>');
   });
+  const edge = Math.min(6, Math.max(1.2, 16 / L));
   for (let i = 0; i < n; i++) {
-    const x = n === 1 ? 50 : (i / (n - 1)) * 100;
+    const x = n === 1 ? 50 : edge + (i / (n - 1)) * (100 - edge * 2);
     parts.push('<span class="pixel-fence-post" style="left:' + x + '%"></span>');
   }
   parts.push('</span>');
