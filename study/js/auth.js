@@ -149,6 +149,7 @@ async function setup() {
         import('https://www.gstatic.com/firebasejs/' + FIREBASE_SDK_VERSION + '/firebase-auth.js')
       ]);
       const {
+        initializeAuth,
         getAuth,
         GoogleAuthProvider,
         signInWithPopup,
@@ -163,27 +164,24 @@ async function setup() {
       } = authMod;
 
       const app = initializeApp(cfg);
-      const auth = getAuth(app);
       const provider = new GoogleAuthProvider();
 
-      // Any Safari/WebKit build (desktop OR iOS). Used for both the redirect
-      // decision and the persistence ordering below.
-      function isSafariLike() {
-        const ua = navigator.userAgent || '';
-        return /Safari/.test(ua) && !/Chrome|Chromium|CriOS|FxiOS|Edg|OPR|Android/.test(ua);
-      }
-
       // Explicitly pin persistent auth storage so the session survives reloads
-      // and the redirect round-trip. On Safari, IndexedDB is unreliable under
-      // Intelligent Tracking Prevention (setPersistence can resolve but the
-      // store gets partitioned/evicted, so the session silently vanishes) —
-      // so there we try plain localStorage FIRST, which is first-party on the
-      // app origin and sticks. Elsewhere IndexedDB first is fine. We
-      // deliberately never fall back to in-memory (that wouldn't survive a
-      // refresh, which is the whole point).
-      const persistenceOrder = isSafariLike()
-        ? [browserLocalPersistence, indexedDBLocalPersistence]
-        : [indexedDBLocalPersistence, browserLocalPersistence];
+      // and the redirect round-trip. IndexedDB can throw "Database is
+      // closing/hidden" while a popup is handing auth state back to the opener,
+      // so localStorage is the primary persistence on every browser. IndexedDB
+      // remains a fallback for environments where localStorage is unavailable.
+      const persistenceOrder = [browserLocalPersistence, indexedDBLocalPersistence];
+      let auth;
+      try {
+        auth = initializeAuth(app, {
+          persistence: persistenceOrder,
+          popupRedirectResolver: browserPopupRedirectResolver
+        });
+      } catch (e) {
+        auth = getAuth(app);
+        console.error('CloudAuth: initializeAuth failed, using existing auth instance.', e);
+      }
       let persisted = false;
       for (let i = 0; i < persistenceOrder.length; i++) {
         try {
@@ -198,6 +196,25 @@ async function setup() {
         console.error('CloudAuth: no persistent auth storage available; the session may not survive a reload.');
       }
 
+      function isAuthPersistenceError(err) {
+        const code = err && err.code;
+        const message = String((err && (err.message || err.name)) || err || '').toLowerCase();
+        return code === 'auth/web-storage-unsupported' ||
+               message.indexOf('database is closing') !== -1 ||
+               message.indexOf('indexeddb') !== -1 ||
+               message.indexOf('idb') !== -1;
+      }
+
+      async function forceBrowserLocalPersistence(reason) {
+        try {
+          await setPersistence(auth, browserLocalPersistence);
+          return true;
+        } catch (e) {
+          console.error('CloudAuth: local persistence fallback failed' + (reason ? ' during ' + reason : '') + '.', e);
+          return false;
+        }
+      }
+
       // Complete any sign-in that was started via a full-page redirect on a
       // PREVIOUS page load (Safari path, or the popup fallback below). This
       // MUST run here, at module setup (before app.js subscribes to
@@ -209,12 +226,22 @@ async function setup() {
       try {
         await getRedirectResult(auth, browserPopupRedirectResolver);
       } catch (err) {
-        // On Safari a partitioned-storage failure can reject here even though
-        // the sign-in itself is fine — so we log it but DO NOT treat it as
-        // fatal: the definitive answer is auth.currentUser / the first
-        // onAuthStateChanged below, which we still honor.
-        redirectError = err;
-        console.error('CloudAuth: getRedirectResult failed (continuing; will rely on currentUser).', err);
+        if (isAuthPersistenceError(err) && await forceBrowserLocalPersistence('redirect completion')) {
+          try {
+            await getRedirectResult(auth, browserPopupRedirectResolver);
+            redirectError = null;
+          } catch (retryErr) {
+            redirectError = retryErr;
+            console.error('CloudAuth: getRedirectResult retry failed (continuing; will rely on currentUser).', retryErr);
+          }
+        } else {
+          // On Safari a partitioned-storage failure can reject here even though
+          // the sign-in itself is fine — so we log it but DO NOT treat it as
+          // fatal: the definitive answer is auth.currentUser / the first
+          // onAuthStateChanged below, which we still honor.
+          redirectError = err;
+          console.error('CloudAuth: getRedirectResult failed (continuing; will rely on currentUser).', err);
+        }
       }
 
       // Definitive INITIAL auth state, resolved from the first
@@ -270,14 +297,31 @@ async function setup() {
         // explicitly guarantees the popup resolver is used regardless of how
         // the SDK auto-registers it.
         signInWithGoogle: async function () {
-          try {
+          async function signInPopupOnce() {
             const result = await signInWithPopup(auth, provider, browserPopupRedirectResolver);
             return mapUser(result.user);
+          }
+          try {
+            return await signInPopupOnce();
           } catch (err) {
+            const current = mapUser(auth.currentUser);
+            if (current) return current;
+            if (isAuthPersistenceError(err) && await forceBrowserLocalPersistence('popup sign-in')) {
+              try {
+                return await signInPopupOnce();
+              } catch (retryErr) {
+                if (isPopupUnavailable(retryErr)) {
+                  await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
+                  return null;
+                }
+                throw retryErr;
+              }
+            }
             if (isPopupUnavailable(err)) {
               // Popup couldn't open — fall back to a full-page redirect. This
               // navigates away, so the returned promise never resolves in-page;
               // getRedirectResult() (above, on the next load) finishes the job.
+              await forceBrowserLocalPersistence('redirect fallback');
               await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
               return null;
             }
@@ -288,6 +332,7 @@ async function setup() {
         // popup attempt entirely. Navigates away; completion is handled by
         // getRedirectResult() on the subsequent load.
         signInWithGoogleRedirect: async function () {
+          await forceBrowserLocalPersistence('redirect sign-in');
           await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
         },
         // Snapshot of any error thrown while completing a pending redirect on

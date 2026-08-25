@@ -402,6 +402,9 @@
       case 'auth/network-request-failed':
         return 'Network error reaching Firebase — check your connection and retry.';
       default:
+        if (err && err.message && /database is closing|indexeddb|idb/i.test(err.message)) {
+          return 'Browser sign-in storage was unavailable. Reload this page and try signing in again.';
+        }
         return err && (err.code || err.message)
           ? 'Sign-in failed: ' + (err.code || err.message)
           : 'Sign-in failed. Please try again.';
